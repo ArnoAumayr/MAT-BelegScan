@@ -884,30 +884,32 @@ async function appendToSheet(b) {
 
   const einnahme = parseFloat(b.einnahme||0);
   const ausgabe = parseFloat(b.ausgabe||0);
-  const betrag = einnahme>0 ? einnahme : ausgabe;
-  const netto = calcNetto(betrag, b.ust);
 
-  const row = [
-    '',                                      // A - leer
-    '',                                      // B - leer
-    '',                                      // C - leer
-    toAT(b.datum),                           // D - Datum (Zahlungsdatum)
+  // Step 1: Find next empty row
+  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A:A')}`;
+  const getR = await fetch(getUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
+  const getData = await getR.json();
+  const nextRow = ((getData.values||[]).length) + 1;
+
+  // Step 2: Write only D,E,G,I,J,K — leave A,B,C,F,H empty by targeting exact range
+  // D=col4, E=col5, G=col7, I=col9, J=col10, K=col11
+  const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!D'+nextRow+':K'+nextRow)}?valueInputOption=USER_ENTERED`;
+
+  const rowData = [
+    toAT(b.datum),                           // D - Datum
     b.bart||'K',                             // E - B/K
     '',                                      // F - leer
     b.text||'',                              // G - Text
     '',                                      // H - leer
-    einnahme>0 ? einnahme.toFixed(2) : '',   // I - Einnahme inkl. MwSt
-    ausgabe>0 ? ausgabe.toFixed(2) : '',     // J - Ausgabe inkl. MwSt
+    einnahme>0 ? einnahme.toFixed(2) : '',   // I - Einnahme
+    ausgabe>0 ? ausgabe.toFixed(2) : '',     // J - Ausgabe
     b.ust||'20',                             // K - USt%
   ];
 
-  const range = encodeURIComponent(sheetName+'!A:L');
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
-
-  const r = await fetch(url, {
-    method:'POST',
+  const r = await fetch(writeUrl, {
+    method:'PUT',
     headers:{ Authorization: 'Bearer '+accessToken, 'Content-Type':'application/json' },
-    body: JSON.stringify({ values: [row] })
+    body: JSON.stringify({ values: [rowData] })
   });
   if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
 }
