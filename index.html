@@ -641,6 +641,9 @@ async function analyzeBeleg(beleg) {
   const apiKey = getSetting('apikey','');
   if (!apiKey) { beleg.status='error'; beleg.hinweis='Kein API Key konfiguriert.'; return; }
 
+  // Small delay to ensure Google login token is ready
+  await new Promise(r => setTimeout(r, 300));
+
   try {
     const base64 = await toBase64(beleg.file);
     const mediaType = beleg.file.type === 'application/pdf' ? 'image/jpeg' : (beleg.file.type || 'image/jpeg');
@@ -923,12 +926,12 @@ async function appendToSheet(b) {
     '',       // F
     b.text||'', // G - Text
     hCol,     // H - Re-Datum (immer)
-    einnahme > 0 ? einnahme.toFixed(2).replace('.',',') : '', // I - Einnahme
-    ausgabe > 0 ? ausgabe.toFixed(2).replace('.',',') : '',   // J - Ausgabe
+    einnahme > 0 ? einnahme : '', // I - Einnahme
+    ausgabe > 0 ? ausgabe : '',   // J - Ausgabe
     b.ust||'20', // K - USt%
   ];
 
-  const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':K'+nextRow)}?valueInputOption=USER_ENTERED`;
+  const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':K'+nextRow)}?valueInputOption=RAW`;
   const r = await fetch(writeUrl, {
     method: 'PUT',
     headers: { Authorization: 'Bearer '+accessToken, 'Content-Type': 'application/json' },
