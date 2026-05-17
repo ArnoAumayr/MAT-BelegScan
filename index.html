@@ -885,58 +885,46 @@ async function appendToSheet(b) {
   const einnahme = parseFloat(b.einnahme||0);
   const ausgabe = parseFloat(b.ausgabe||0);
 
-  // Step 1: Get sheet metadata to find actual column positions
-  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?includeGridData=false`;
-  const metaR = await fetch(metaUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
-  const meta = await metaR.json();
-  const sheet = meta.sheets?.find(s => s.properties?.title === sheetName);
-  console.log('Sheet found:', sheet?.properties?.title, 'columnCount:', sheet?.properties?.gridProperties?.columnCount);
-
-  // Step 2: Find next empty row - read ALL data to get accurate count
+  // Find next empty row
   const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A:K')}`;
   const getR = await fetch(getUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
   const getData = await getR.json();
-  // Find last non-empty row across all columns
   const allRows = getData.values || [];
   let lastFilledRow = 0;
-  allRows.forEach((row, idx) => {
-    if (row.some(cell => cell !== '' && cell !== undefined)) lastFilledRow = idx + 1;
+  allRows.forEach((row, i) => {
+    if (row.some(c => c !== '' && c !== undefined)) lastFilledRow = i + 1;
   });
   const nextRow = lastFilledRow + 1;
-  console.log('Total rows with data:', lastFilledRow, '→ Writing to row:', nextRow);
 
-  // Step 3: Write full row A:K so positions are unambiguous
-  // A=leer, B=leer, C=leer, D=Datum, E=B/K, F=leer, G=Text, H=leer, I=Einnahme, J=Ausgabe, K=USt%
-  // H = Re-Datum nur bei Einnahmen (Zahlungsdatum unbekannt, Re-Datum zur Referenz)
-  const hCol = (einnahme>0 && b.redatum) ? toAT(b.redatum) : '';
+  // D = Zahlungsdatum: IMMER leer bei Einnahmen, bei Ausgaben = Rechnungsdatum als Vorschlag
+  const dCol = einnahme > 0 ? '' : toAT(b.datum);
+  // H = Re-Datum: IMMER schreiben (Rechnungsdatum vom Beleg)
+  const hCol = toAT(b.redatum);
 
   const fullRow = [
-    '',                                        // A
-    '',                                        // B
-    '',                                        // C
-    toAT(b.datum),                             // D - Zahlungsdatum (leer bei Einnahmen)
-    b.bart||'K',                               // E - B/K
-    '',                                        // F
-    b.text||'',                                // G - Text
-    hCol,                                      // H - Re-Datum (nur bei Einnahmen)
-    einnahme>0 ? einnahme.toFixed(2) : '',     // I - Einnahme
-    ausgabe>0 ? ausgabe.toFixed(2) : '',       // J - Ausgabe
-    b.ust||'20',                               // K - USt%
+    '',       // A
+    '',       // B
+    '',       // C
+    dCol,     // D - Zahlungsdatum (leer bei Einnahmen)
+    b.bart||'K', // E - B/K
+    '',       // F
+    b.text||'', // G - Text
+    hCol,     // H - Re-Datum (immer)
+    einnahme > 0 ? einnahme.toFixed(2) : '', // I - Einnahme
+    ausgabe > 0 ? ausgabe.toFixed(2) : '',   // J - Ausgabe
+    b.ust||'20', // K - USt%
   ];
-
-  console.log('Row data:', fullRow);
 
   const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':K'+nextRow)}?valueInputOption=USER_ENTERED`;
   const r = await fetch(writeUrl, {
-    method:'PUT',
-    headers:{ Authorization: 'Bearer '+accessToken, 'Content-Type':'application/json' },
+    method: 'PUT',
+    headers: { Authorization: 'Bearer '+accessToken, 'Content-Type': 'application/json' },
     body: JSON.stringify({ values: [fullRow] })
   });
-  if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
-  console.log('Sheet write OK, row:', nextRow);
+  if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
 }
 
-// ── HISTORY ──
+
 async function loadHistory() {
   const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
   const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
