@@ -885,31 +885,29 @@ async function appendToSheet(b) {
   const einnahme = parseFloat(b.einnahme||0);
   const ausgabe = parseFloat(b.ausgabe||0);
 
-  // Step 1: Find next empty row
-  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A:A')}`;
+  // Find next empty row by reading column D (where our data starts)
+  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!D:D')}`;
   const getR = await fetch(getUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
+  if (!getR.ok) { const e=await getR.json(); throw new Error(e.error?.message||'Sheet lesen fehlgeschlagen'); }
   const getData = await getR.json();
   const nextRow = ((getData.values||[]).length) + 1;
 
-  // Step 2: Write only D,E,G,I,J,K — leave A,B,C,F,H empty by targeting exact range
-  // D=col4, E=col5, G=col7, I=col9, J=col10, K=col11
-  const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!D'+nextRow+':K'+nextRow)}?valueInputOption=USER_ENTERED`;
-
-  const rowData = [
-    toAT(b.datum),                           // D - Datum
-    b.bart||'K',                             // E - B/K
-    '',                                      // F - leer
-    b.text||'',                              // G - Text
-    '',                                      // H - leer
-    einnahme>0 ? einnahme.toFixed(2) : '',   // I - Einnahme
-    ausgabe>0 ? ausgabe.toFixed(2) : '',     // J - Ausgabe
-    b.ust||'20',                             // K - USt%
+  // Write individual cells to guarantee correct column placement
+  // D=Datum, E=B/K, G=Text, I=Einnahme, J=Ausgabe, K=USt%
+  const cellData = [
+    { range: sheetName+'!D'+nextRow, values: [[toAT(b.datum)]] },
+    { range: sheetName+'!E'+nextRow, values: [[b.bart||'K']] },
+    { range: sheetName+'!G'+nextRow, values: [[b.text||'']] },
+    { range: sheetName+'!I'+nextRow, values: [[einnahme>0 ? einnahme.toFixed(2) : '']] },
+    { range: sheetName+'!J'+nextRow, values: [[ausgabe>0 ? ausgabe.toFixed(2) : '']] },
+    { range: sheetName+'!K'+nextRow, values: [[b.ust||'20']] },
   ];
 
-  const r = await fetch(writeUrl, {
-    method:'PUT',
+  const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchUpdate`;
+  const r = await fetch(batchUrl, {
+    method:'POST',
     headers:{ Authorization: 'Bearer '+accessToken, 'Content-Type':'application/json' },
-    body: JSON.stringify({ values: [rowData] })
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data: cellData })
   });
   if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
 }
