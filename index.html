@@ -620,7 +620,7 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
 {"datum":"YYYY-MM-DD","bart":"K","text":"Lieferant - Was","einnahme":0,"ausgabe":0,"ust":20,"konto":"760","confidence":85,"hinweis":""}`;
 
     const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
@@ -636,8 +636,12 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
 
     const data = await resp.json();
     if (data.error) throw new Error(data.error.message);
-    const raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-    const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    // Strip markdown fences and extract JSON object
+    raw = raw.replace(/```json|```/g,'').trim();
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('Kein JSON in Antwort gefunden: ' + raw.substring(0,100));
+    const parsed = JSON.parse(jsonMatch[0]);
 
     beleg.redatum = parsed.datum||'';
     beleg.datum = parsed.datum||'';
