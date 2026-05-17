@@ -570,6 +570,12 @@ async function processFiles(files) {
     const beleg = { id, file, status:'processing', datum:'', redatum:'', bart:'K', text:'', einnahme:'', ausgabe:'', ust:'20', konto:'', kontoname:'', confidence:0, hinweis:'', thumb:'', driveFileId:'', saved:false };
     belege.push(beleg);
     if (file.type.startsWith('image/')) beleg.thumb = await toDataUrl(file);
+    else if (file.type === 'application/pdf') {
+      try {
+        const b64 = await pdfToBase64(file);
+        beleg.thumb = 'data:image/jpeg;base64,' + b64;
+      } catch(e) { /* no thumb for pdf */ }
+    }
     renderBelege();
     await analyzeBeleg(beleg);
     renderBelege();
@@ -598,17 +604,27 @@ async function toBase64(file) {
 }
 
 async function pdfToBase64(file) {
+  // Load PDF.js dynamically if not already loaded
+  if (typeof pdfjsLib === 'undefined') {
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+      s.onload = resolve;
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+  }
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const page = await pdf.getPage(1); // first page
-  const viewport = page.getViewport({ scale: 2.0 });
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 2.5 });
   const canvas = document.createElement('canvas');
   canvas.width = viewport.width;
   canvas.height = viewport.height;
   const ctx = canvas.getContext('2d');
   await page.render({ canvasContext: ctx, viewport }).promise;
-  const dataUrl = canvas.toDataURL('image/png');
+  const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
   return dataUrl.split(',')[1];
 }
 
@@ -619,7 +635,7 @@ async function analyzeBeleg(beleg) {
 
   try {
     const base64 = await toBase64(beleg.file);
-    const mediaType = beleg.file.type === 'application/pdf' ? 'image/png' : (beleg.file.type || 'image/jpeg');
+    const mediaType = beleg.file.type === 'application/pdf' ? 'image/jpeg' : (beleg.file.type || 'image/jpeg');
     const accList = ACCOUNTS.map(a=>a.nr+' = '+a.name).join('\n');
 
     const prompt = `Du bist ein österreichischer Buchaltungsassistent (EÜR). Analysiere diesen Beleg und extrahiere alle relevanten Daten für die Buchaltung.
