@@ -620,7 +620,7 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
 {"datum":"YYYY-MM-DD","bart":"K","text":"Lieferant - Was","einnahme":0,"ausgabe":0,"ust":20,"konto":"760","confidence":85,"hinweis":""}`;
 
     const resp = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-lite:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
       {
         method:'POST',
         headers:{ 'Content-Type':'application/json' },
