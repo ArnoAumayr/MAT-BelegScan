@@ -688,8 +688,8 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
     const parsed = JSON.parse(jsonMatch[0]);
 
     beleg.redatum = parsed.datum||'';
-    // Zahlungsdatum: bei Ausgaben = Rechnungsdatum als Vorschlag, bei Einnahmen leer lassen
-    beleg.datum = parsed.ausgabe>0 ? (parsed.datum||'') : '';
+    // Zahlungsdatum: bei Ausgaben = Rechnungsdatum als Vorschlag, bei Einnahmen leer
+    beleg.datum = (parsed.einnahme > 0 || parsed.ausgabe <= 0) ? '' : (parsed.datum||'');
     beleg.bart = (parsed.bart||'K').toUpperCase().charAt(0);
     beleg.text = parsed.text||'';
     beleg.einnahme = parsed.einnahme>0 ? String(parseFloat(parsed.einnahme).toFixed(2)) : '';
@@ -907,15 +907,18 @@ async function appendToSheet(b) {
 
   // Step 3: Write full row A:K so positions are unambiguous
   // A=leer, B=leer, C=leer, D=Datum, E=B/K, F=leer, G=Text, H=leer, I=Einnahme, J=Ausgabe, K=USt%
+  // H = Re-Datum nur bei Einnahmen (Zahlungsdatum unbekannt, Re-Datum zur Referenz)
+  const hCol = (einnahme>0 && b.redatum) ? toAT(b.redatum) : '';
+
   const fullRow = [
     '',                                        // A
     '',                                        // B
     '',                                        // C
-    toAT(b.datum),                             // D - Datum
+    toAT(b.datum),                             // D - Zahlungsdatum (leer bei Einnahmen)
     b.bart||'K',                               // E - B/K
     '',                                        // F
     b.text||'',                                // G - Text
-    '',                                        // H
+    hCol,                                      // H - Re-Datum (nur bei Einnahmen)
     einnahme>0 ? einnahme.toFixed(2) : '',     // I - Einnahme
     ausgabe>0 ? ausgabe.toFixed(2) : '',       // J - Ausgabe
     b.ust||'20',                               // K - USt%
