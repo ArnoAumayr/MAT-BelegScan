@@ -306,6 +306,12 @@ body {
 .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text3); }
 .empty-state .empty-icon { font-size: 40px; margin-bottom: 1rem; display: block; opacity: .4; }
 .empty-state p { font-size: 13px; line-height: 1.6; }
+
+/* TOGGLE */
+.toggle-wrap { display: flex; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); overflow: hidden; }
+.toggle-btn { flex: 1; padding: 6px 10px; font-family: var(--font-mono); font-size: 12px; border: none; background: transparent; color: var(--text3); cursor: pointer; transition: all .15s; }
+.toggle-btn.active-ein { background: var(--green-bg); color: var(--green); }
+.toggle-btn.active-aus { background: var(--red-bg); color: var(--red); }
 </style>
 </head>
 <body>
@@ -560,7 +566,7 @@ async function processFiles(files) {
   for (const file of Array.from(files)) {
     if (!file.type.startsWith('image/') && file.type !== 'application/pdf') continue;
     const id = ++belegCounter;
-    const beleg = { id, file, status:'processing', datum:'', bart:'K', text:'', einnahme:'', ausgabe:'', ust:'20', konto:'', kontoname:'', confidence:0, hinweis:'', thumb:'', driveFileId:'', saved:false };
+    const beleg = { id, file, status:'processing', datum:'', redatum:'', bart:'K', text:'', einnahme:'', ausgabe:'', ust:'20', konto:'', kontoname:'', confidence:0, hinweis:'', thumb:'', driveFileId:'', saved:false };
     belege.push(beleg);
     if (file.type.startsWith('image/')) beleg.thumb = await toDataUrl(file);
     renderBelege();
@@ -630,6 +636,7 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
     const raw = data.content?.find(c=>c.type==='text')?.text || '{}';
     const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
 
+    beleg.redatum = parsed.datum||'';
     beleg.datum = parsed.datum||'';
     beleg.bart = (parsed.bart||'K').toUpperCase().charAt(0);
     beleg.text = parsed.text||'';
@@ -688,14 +695,20 @@ function renderBelege() {
       <div class="beleg-fields">
         <div class="field-grid">
           <div class="field"><label>Monat</label><input type="text" value="${esc(getMonth(b.datum))}" readonly></div>
-          <div class="field"><label>Zahlungsdatum</label><input type="date" value="${esc(b.datum)}" onchange="updateBeleg(${b.id},'datum',this.value)"></div>
+          <div class="field"><label>Zahlungsdatum ★</label><input type="date" value="${esc(b.datum)}" onchange="updateBeleg(${b.id},'datum',this.value)"></div>
+          <div class="field"><label>Re-Datum</label><input type="date" value="${esc(b.redatum)}" onchange="updateBeleg(${b.id},'redatum',this.value)"></div>
           <div class="field"><label>B-Art</label><select onchange="updateBeleg(${b.id},'bart',this.value)">
             <option value="K" ${b.bart==='K'?'selected':''}>K – Kassa</option>
             <option value="B" ${b.bart==='B'?'selected':''}>B – Bank</option>
           </select></div>
+          <div class="field"><label>Einnahme / Ausgabe</label>
+            <div class="toggle-wrap">
+              <button class="toggle-btn ${!einnahme?'active-aus':''}" onclick="setEinAus(${b.id},'aus')">− Ausgabe</button>
+              <button class="toggle-btn ${einnahme?'active-ein':''}" onclick="setEinAus(${b.id},'ein')">+ Einnahme</button>
+            </div>
+          </div>
+          <div class="field"><label>${einnahme?'Einnahme':'Ausgabe'} €</label><input type="number" step="0.01" value="${esc(einnahme?b.einnahme:b.ausgabe)}" onchange="setBetrag(${b.id},this.value)"></div>
           <div class="field field-full"><label>Text / Buchungstext</label><input type="text" value="${esc(b.text)}" onchange="updateBeleg(${b.id},'text',this.value)"></div>
-          <div class="field"><label>Einnahme €</label><input type="number" step="0.01" value="${esc(b.einnahme)}" onchange="updateBeleg(${b.id},'einnahme',this.value)"></div>
-          <div class="field"><label>Ausgabe €</label><input type="number" step="0.01" value="${esc(b.ausgabe)}" onchange="updateBeleg(${b.id},'ausgabe',this.value)"></div>
           <div class="field"><label>USt %</label><select onchange="updateBeleg(${b.id},'ust',this.value)">
             ${['0','5','10','13','20'].map(u=>`<option value="${u}" ${u===b.ust?'selected':''}>${u}%</option>`).join('')}
           </select></div>
@@ -719,6 +732,20 @@ function renderBelege() {
     bar.style.display='flex';
     document.getElementById('batch-count').textContent = unsaved+' Belege bereit zum Speichern';
   } else { bar.style.display='none'; }
+}
+
+function setEinAus(id, typ) {
+  const b = belege.find(b=>b.id===id); if (!b) return;
+  if (typ==='ein') { b.einnahme = b.ausgabe||b.einnahme||''; b.ausgabe=''; }
+  else { b.ausgabe = b.einnahme||b.ausgabe||''; b.einnahme=''; }
+  renderBelege();
+}
+
+function setBetrag(id, val) {
+  const b = belege.find(b=>b.id===id); if (!b) return;
+  const einnahme = parseFloat(b.einnahme||0)>0 || (parseFloat(b.ausgabe||0)===0 && parseFloat(b.einnahme||0)===0);
+  if (parseFloat(b.einnahme||0)>0 || (!b.ausgabe && !b.einnahme)) b.einnahme = val;
+  else b.ausgabe = val;
 }
 
 function updateBeleg(id, field, val) {
@@ -812,7 +839,7 @@ async function appendToSheet(b) {
     b.bart||'K',
     '',
     b.text||'',
-    '',
+    b.redatum ? toAT(b.redatum) : '',
     einnahme>0 ? einnahme.toFixed(2) : '',
     ausgabe>0 ? ausgabe.toFixed(2) : '',
     b.ust||'20',
