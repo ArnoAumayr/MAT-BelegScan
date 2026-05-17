@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>BelegScan — Buchaltung AP</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0f0f0f;
+  --bg2: #181818;
+  --bg3: #222222;
+  --border: #2a2a2a;
+  --border2: #333;
+  --text: #f0ede8;
+  --text2: #9a9690;
+  --text3: #5a5755;
+  --accent: #e8d5a3;
+  --accent2: #c4a96b;
+  --green: #7ec8a0;
+  --green-bg: rgba(126,200,160,0.08);
+  --red: #e07070;
+  --red-bg: rgba(224,112,112,0.08);
+  --yellow: #e8c87a;
+  --yellow-bg: rgba(232,200,122,0.08);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font-display: 'Syne', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+/* ── LOGIN SCREEN ── */
+#login-screen {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+}
+#login-screen::before {
+  content: '';
+  position: absolute;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(232,213,163,0.04) 0%, transparent 70%);
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.login-logo {
+  font-family: var(--font-display);
+  font-size: 42px;
+  font-weight: 800;
+  letter-spacing: -2px;
+  color: var(--accent);
+  margin-bottom: 4px;
+  line-height: 1;
+}
+.login-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text3);
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  margin-bottom: 3rem;
+}
+.login-card {
+  background: var(--bg2);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 2rem;
+  width: 100%;
+  max-width: 340px;
+  text-align: center;
+}
+.login-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; margin-bottom: .5rem; }
+.login-desc { color: var(--text2); font-size: 12px; line-height: 1.6; margin-bottom: 1.5rem; }
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  width: 100%; padding: 12px;
+  background: var(--bg3); border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font-mono); font-size: 13px; cursor: pointer;
+  transition: all .15s;
+}
+.btn-google:hover { background: #2a2a2a; border-color: var(--accent2); }
+.btn-google svg { flex-shrink: 0; }
+.api-key-section { margin-top: 1.25rem; }
+.api-key-section label { display: block; text-align: left; font-size: 11px; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; margin-bottom: .4rem; }
+.api-key-section input {
+  width: 100%; padding: 9px 12px;
+  background: var(--bg); border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font-mono); font-size: 12px;
+}
+.api-key-section input:focus { outline: none; border-color: var(--accent2); }
+.api-key-hint { font-size: 10px; color: var(--text3); margin-top: .4rem; text-align: left; }
+
+/* ── APP SHELL ── */
+#app { display: none; flex-direction: column; min-height: 100dvh; }
+
+/* HEADER */
+.header {
+  background: var(--bg2);
+  border-bottom: 0.5px solid var(--border);
+  padding: .75rem 1rem;
+  display: flex; align-items: center; gap: 10px;
+  position: sticky; top: 0; z-index: 100;
+}
+.header-logo { font-family: var(--font-display); font-weight: 800; font-size: 18px; color: var(--accent); letter-spacing: -1px; flex: 1; }
+.header-user { display: flex; align-items: center; gap: 8px; }
+.header-avatar { width: 28px; height: 28px; border-radius: 50%; border: 1.5px solid var(--border2); }
+.header-name { font-size: 11px; color: var(--text2); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.btn-logout { background: none; border: 0.5px solid var(--border2); border-radius: var(--radius-sm); color: var(--text3); font-family: var(--font-mono); font-size: 11px; padding: 4px 10px; cursor: pointer; }
+.btn-logout:hover { color: var(--red); border-color: var(--red); }
+
+/* TABS */
+.tabs {
+  display: flex; background: var(--bg2); border-bottom: 0.5px solid var(--border);
+  position: sticky; top: 53px; z-index: 99;
+}
+.tab {
+  flex: 1; padding: 10px 4px; text-align: center;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .05em; text-transform: uppercase;
+  color: var(--text3); cursor: pointer; border-bottom: 2px solid transparent;
+  transition: all .15s;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+/* MAIN */
+.main { flex: 1; padding: 1rem; max-width: 680px; margin: 0 auto; width: 100%; }
+
+/* PANELS */
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* UPLOAD ZONE */
+.upload-zone {
+  border: 1.5px dashed var(--border2); border-radius: var(--radius);
+  padding: 2rem 1rem; text-align: center; cursor: pointer;
+  transition: all .15s; position: relative; overflow: hidden;
+  margin-bottom: 1rem;
+}
+.upload-zone:hover, .upload-zone.drag { border-color: var(--accent2); background: rgba(232,213,163,0.03); }
+.upload-icon { font-size: 36px; margin-bottom: .75rem; display: block; }
+.upload-title { font-family: var(--font-display); font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: .4rem; }
+.upload-sub { font-size: 11px; color: var(--text3); line-height: 1.6; }
+.camera-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-top: 1rem; padding: 10px 20px;
+  background: var(--accent); color: var(--bg); border: none; border-radius: var(--radius-sm);
+  font-family: var(--font-display); font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: all .15s;
+}
+.camera-btn:hover { background: var(--accent2); }
+#file-input { display: none; }
+#camera-input { display: none; }
+
+/* STATUS */
+.status {
+  display: flex; align-items: center; gap: 8px;
+  padding: .65rem 1rem; border-radius: var(--radius-sm);
+  font-size: 12px; margin-bottom: .75rem;
+}
+.status.info { background: rgba(232,213,163,0.08); color: var(--accent); border: 0.5px solid rgba(232,213,163,0.15); }
+.status.success { background: var(--green-bg); color: var(--green); border: 0.5px solid rgba(126,200,160,0.15); }
+.status.warn { background: var(--yellow-bg); color: var(--yellow); border: 0.5px solid rgba(232,200,122,0.15); }
+.status.err { background: var(--red-bg); color: var(--red); border: 0.5px solid rgba(224,112,112,0.15); }
+.spinner { display: inline-block; width: 12px; height: 12px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; flex-shrink: 0; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* BELEG CARD */
+.beleg-card {
+  background: var(--bg2); border: 0.5px solid var(--border);
+  border-radius: var(--radius); margin-bottom: .75rem; overflow: hidden;
+}
+.beleg-card.dup { border-color: var(--red); }
+.beleg-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: .75rem 1rem; border-bottom: 0.5px solid var(--border);
+}
+.beleg-thumb {
+  width: 44px; height: 44px; border-radius: var(--radius-sm);
+  object-fit: cover; border: 0.5px solid var(--border2); flex-shrink: 0;
+  background: var(--bg3);
+}
+.beleg-thumb-placeholder {
+  width: 44px; height: 44px; border-radius: var(--radius-sm);
+  background: var(--bg3); border: 0.5px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; flex-shrink: 0;
+}
+.beleg-info { flex: 1; min-width: 0; }
+.beleg-name { font-family: var(--font-display); font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.beleg-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+.pill {
+  font-size: 10px; font-weight: 500; padding: 3px 8px; border-radius: 20px;
+  letter-spacing: .03em; white-space: nowrap; flex-shrink: 0;
+}
+.pill.ein { background: var(--green-bg); color: var(--green); border: 0.5px solid rgba(126,200,160,0.2); }
+.pill.aus { background: var(--red-bg); color: var(--red); border: 0.5px solid rgba(224,112,112,0.2); }
+.pill.dup { background: var(--red-bg); color: var(--red); }
+.pill.processing { background: var(--yellow-bg); color: var(--yellow); }
+.pill.saved { background: var(--green-bg); color: var(--green); }
+
+.beleg-fields { padding: .75rem 1rem; }
+.field-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+@media (min-width: 480px) { .field-grid { grid-template-columns: repeat(3, 1fr); } }
+
+.field { display: flex; flex-direction: column; gap: 3px; }
+.field label { font-size: 10px; color: var(--text3); letter-spacing: .08em; text-transform: uppercase; }
+.field input, .field select {
+  padding: 6px 8px; background: var(--bg3); border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font-mono); font-size: 12px; width: 100%;
+}
+.field input:focus, .field select:focus { outline: none; border-color: var(--accent2); }
+.field input[readonly] { color: var(--text3); }
+.field-full { grid-column: 1 / -1; }
+
+.beleg-actions {
+  display: flex; gap: 6px; padding: .75rem 1rem; border-top: 0.5px solid var(--border);
+  flex-wrap: wrap;
+}
+.btn-sm {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border2); background: transparent;
+  color: var(--text2); font-family: var(--font-mono); font-size: 11px; cursor: pointer;
+  transition: all .15s;
+}
+.btn-sm:hover { background: var(--bg3); color: var(--text); }
+.btn-sm.primary {
+  background: var(--accent); color: var(--bg); border-color: transparent;
+  font-weight: 500;
+}
+.btn-sm.primary:hover { background: var(--accent2); }
+.btn-sm.danger:hover { color: var(--red); border-color: var(--red); }
+.btn-sm:disabled { opacity: .35; cursor: default; }
+
+.confidence { font-size: 10px; color: var(--text3); margin-left: auto; align-self: center; }
+.hinweis { font-size: 11px; color: var(--yellow); background: var(--yellow-bg); border: 0.5px solid rgba(232,200,122,0.15); border-radius: var(--radius-sm); padding: 6px 10px; margin: 0 1rem .75rem; }
+
+/* BATCH ACTIONS */
+.batch-bar {
+  background: var(--bg2); border: 0.5px solid var(--border2);
+  border-radius: var(--radius); padding: .75rem 1rem;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.batch-bar span { font-size: 12px; color: var(--text2); flex: 1; }
+.btn-primary {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 18px; background: var(--accent); color: var(--bg);
+  border: none; border-radius: var(--radius-sm);
+  font-family: var(--font-display); font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: all .15s;
+}
+.btn-primary:hover { background: var(--accent2); }
+.btn-primary:disabled { opacity: .35; cursor: default; }
+
+/* HISTORY */
+.hist-item {
+  background: var(--bg2); border: 0.5px solid var(--border);
+  border-radius: var(--radius); padding: .75rem 1rem;
+  margin-bottom: .5rem; display: flex; align-items: center; gap: 10px;
+}
+.hist-date { font-size: 11px; color: var(--text3); white-space: nowrap; }
+.hist-text { flex: 1; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hist-betrag { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+.hist-betrag.ein { color: var(--green); }
+.hist-betrag.aus { color: var(--red); }
+.section-label { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text3); margin-bottom: .6rem; margin-top: 1.25rem; }
+.section-label:first-child { margin-top: 0; }
+
+/* SETTINGS */
+.settings-card {
+  background: var(--bg2); border: 0.5px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem; margin-bottom: 1rem;
+}
+.settings-title { font-family: var(--font-display); font-size: 14px; font-weight: 600; margin-bottom: 1rem; }
+.settings-row { display: flex; align-items: center; gap: 10px; margin-bottom: .75rem; }
+.settings-row label { font-size: 11px; color: var(--text2); flex: 1; }
+.settings-row input {
+  padding: 6px 10px; background: var(--bg3); border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm); color: var(--text);
+  font-family: var(--font-mono); font-size: 12px; width: 200px;
+}
+.settings-row input:focus { outline: none; border-color: var(--accent2); }
+
+.empty-state { text-align: center; padding: 3rem 1rem; color: var(--text3); }
+.empty-state .empty-icon { font-size: 40px; margin-bottom: 1rem; display: block; opacity: .4; }
+.empty-state p { font-size: 13px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="login-screen">
+  <div class="login-logo">BelegScan</div>
+  <div class="login-sub">Buchaltung · Actionpainting Wien</div>
+  <div class="login-card">
+    <div class="login-title">Anmelden</div>
+    <div class="login-desc">Melde dich mit deinem Google-Konto an um Belege zu erfassen und direkt ins Google Sheet zu speichern.</div>
+    <div class="api-key-section" style="margin-bottom:1.25rem">
+      <label>Anthropic API Key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-..." value="">
+      <div class="api-key-hint">Wird nur lokal im Browser gespeichert. Niemals hochgeladen.</div>
+    </div>
+    <button class="btn-google" onclick="startGoogleLogin()">
+      <svg width="18" height="18" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+      Mit Google anmelden
+    </button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="app">
+  <div class="header">
+    <div class="header-logo">BelegScan</div>
+    <div class="header-user">
+      <img id="user-avatar" class="header-avatar" src="" alt="">
+      <span id="user-name" class="header-name"></span>
+      <button class="btn-logout" onclick="logout()">Logout</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="showTab('scan')">📷 Scannen</div>
+    <div class="tab" onclick="showTab('history')">📋 Verlauf</div>
+    <div class="tab" onclick="showTab('settings')">⚙️ Setup</div>
+  </div>
+
+  <div class="main">
+
+    <!-- SCAN PANEL -->
+    <div id="panel-scan" class="panel active">
+      <div id="global-status"></div>
+
+      <div class="upload-zone" id="drop-zone" onclick="document.getElementById('file-input').click()">
+        <span class="upload-icon">🧾</span>
+        <div class="upload-title">Belege & Rechnungen</div>
+        <div class="upload-sub">Fotos, Scans oder PDFs hierher ziehen<br>JPG · PNG · PDF</div>
+        <button class="camera-btn" onclick="event.stopPropagation(); document.getElementById('camera-input').click()">
+          📸 Kamera öffnen
+        </button>
+      </div>
+      <input type="file" id="file-input" accept="image/*,application/pdf" multiple>
+      <input type="file" id="camera-input" accept="image/*" capture="environment">
+
+      <div id="belege-list"></div>
+
+      <div id="batch-bar" style="display:none" class="batch-bar">
+        <span id="batch-count"></span>
+        <button class="btn-primary" id="btn-save-all" onclick="saveAll()">
+          💾 Alle ins Sheet speichern
+        </button>
+      </div>
+    </div>
+
+    <!-- HISTORY PANEL -->
+    <div id="panel-history" class="panel">
+      <div id="history-status"></div>
+      <div id="history-list">
+        <div class="empty-state">
+          <span class="empty-icon">📋</span>
+          <p>Noch keine Einträge geladen.<br>Klicke unten um den Verlauf zu laden.</p>
+        </div>
+      </div>
+      <div style="margin-top:1rem">
+        <button class="btn-primary" onclick="loadHistory()">🔄 Verlauf laden</button>
+      </div>
+    </div>
+
+    <!-- SETTINGS PANEL -->
+    <div id="panel-settings" class="panel">
+      <div class="settings-card">
+        <div class="settings-title">Google Integration</div>
+        <div class="settings-row">
+          <label>Spreadsheet ID</label>
+          <input type="text" id="set-sheet-id" placeholder="1zYY_O1y...">
+        </div>
+        <div class="settings-row">
+          <label>Sheet-Name (Reiter)</label>
+          <input type="text" id="set-sheet-name" placeholder="Einzelposten">
+        </div>
+        <div class="settings-row">
+          <label>Drive Ordner ID</label>
+          <input type="text" id="set-folder-id" placeholder="17NFIQjr...">
+        </div>
+        <button class="btn-primary" onclick="saveSettings()">💾 Speichern</button>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">API Key</div>
+        <div class="settings-row">
+          <label>Anthropic API Key</label>
+          <input type="password" id="set-api-key" placeholder="sk-ant-...">
+        </div>
+        <button class="btn-primary" onclick="saveApiKey()">💾 Speichern</button>
+      </div>
+      <div class="settings-card">
+        <div class="settings-title">Info</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.7">
+          Alle Einstellungen werden lokal im Browser gespeichert.<br>
+          API Keys werden niemals übertragen oder gespeichert.<br>
+          Belege werden verschlüsselt in deinem Google Drive abgelegt.
+        </p>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Google Identity -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+<script>
+// ── CONFIG ──
+const GOOGLE_CLIENT_ID = '153450666140-bu77o2i7lkdb0racjdabk0ep8v2ps492.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file openid email profile';
+const DEFAULT_SHEET_ID = '1zYY_O1yCrniBT9mcRe3cGlBZjSiK_2hbIgqwgou-_9Q';
+const DEFAULT_FOLDER_ID = '17NFIQjrxpligtJ_gKe9dk0BrdCc6V5ZW';
+const DEFAULT_SHEET_NAME = 'Einzelposten';
+
+const MONATE = ['','Jän','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+
+const ACCOUNTS = [
+  {nr:'400',name:'Erlöse nicht steuerbar'},{nr:'405',name:'Erlöse 5% steuerbar'},
+  {nr:'410',name:'Erlöse 10% steuerbar'},{nr:'413',name:'Erlöse 13% steuerbar'},
+  {nr:'420',name:'Erlöse 20% steuerbar'},{nr:'430',name:'Sonstige Erlöse'},
+  {nr:'490',name:'Privatanteil, Nutzungsentnahmen'},{nr:'505',name:'Wareneinkauf 5% VSt-Abzug'},
+  {nr:'510',name:'Wareneinkauf 10% VSt-Abzug'},{nr:'513',name:'Wareneinkauf 13% VSt-Abzug'},
+  {nr:'520',name:'Wareneinkauf 20% VSt-Abzug'},{nr:'580',name:'Fremdleistungen'},
+  {nr:'600',name:'Personalaufwand'},{nr:'700',name:'AfA, Absetzung f. Abnutzung'},
+  {nr:'705',name:'GWG, geringwertige Wirtschaftsgüter'},{nr:'710',name:'Abgaben und Beiträge'},
+  {nr:'720',name:'Instandhaltungen (nur Gebäude-Erhaltung)'},{nr:'725',name:'Energieaufwand, Betriebskosten, Kleinmat.'},
+  {nr:'730',name:'Porto-, Fracht-, Transportaufwand'},{nr:'732',name:'KFZ-Aufwand (ohne AfA)'},
+  {nr:'735',name:'Reise-, Fahrtspesen, Taggelder'},{nr:'739',name:'Telekommunikation'},
+  {nr:'740',name:'Geschäftsmieten, Leasing, Raumkosten'},{nr:'741',name:'KFZ-Mieten/-Leasing'},
+  {nr:'748',name:'Lizenz- u. Wartungsgebühren, Provisionen'},{nr:'760',name:'Büromaterial, Fachliteratur'},
+  {nr:'765',name:'Werbung, Repräsentationen'},{nr:'770',name:'Versicherung, Beratung, Fortbildung'},
+  {nr:'771',name:'Pflichtversicherung Unternehmer (SVA)'},{nr:'780',name:'Spesen des Geldverkehrs'},
+  {nr:'790',name:'Sonstige Aufwendungen'},{nr:'830',name:'Zinsen und ähnliche Aufwendungen'},
+  {nr:'000',name:'Anlagenzugang Andere'},{nr:'030',name:'Anlagenzugang Gebäude'},{nr:'064',name:'Anlagenzugang KfZ'}
+];
+
+// ── STATE ──
+let accessToken = null;
+let userInfo = null;
+let belege = [];
+let belegCounter = 0;
+
+// ── SETTINGS ──
+function getSetting(k, def) { return localStorage.getItem('belegscan_'+k) || def; }
+function setSetting(k, v) { localStorage.setItem('belegscan_'+k, v); }
+
+function getApiKey() {
+  return document.getElementById('api-key-input')?.value || getSetting('apikey', '');
+}
+
+// ── UTILS ──
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function getMonth(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr); if (isNaN(d)) return '';
+  return MONATE[d.getMonth()+1] || '';
+}
+function toAT(dateStr) {
+  if (!dateStr) return '';
+  const [y,m,d] = dateStr.split('-');
+  return d&&m&&y ? d+'.'+m+'.'+y : dateStr;
+}
+function findAcc(nr) { return ACCOUNTS.find(a=>a.nr===nr) || null; }
+function calcNetto(betrag, ust) {
+  const b = parseFloat(betrag||0); const u = parseFloat(ust||0)/100;
+  return u>0 ? (b/(1+u)).toFixed(2) : b.toFixed(2);
+}
+
+// ── GOOGLE LOGIN ──
+function startGoogleLogin() {
+  const apiKey = document.getElementById('api-key-input').value.trim();
+  if (!apiKey) { alert('Bitte zuerst deinen Anthropic API Key eingeben!'); return; }
+  setSetting('apikey', apiKey);
+
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp) => {
+      if (resp.error) { alert('Login fehlgeschlagen: '+resp.error); return; }
+      accessToken = resp.access_token;
+      await loadUserInfo();
+      showApp();
+    }
+  });
+  client.requestAccessToken();
+}
+
+async function loadUserInfo() {
+  const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: 'Bearer '+accessToken }
+  });
+  userInfo = await r.json();
+}
+
+function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  document.getElementById('user-name').textContent = userInfo?.name || userInfo?.email || '';
+  const av = document.getElementById('user-avatar');
+  if (userInfo?.picture) av.src = userInfo.picture; else av.style.display='none';
+  // Load settings
+  document.getElementById('set-sheet-id').value = getSetting('sheetId', DEFAULT_SHEET_ID);
+  document.getElementById('set-sheet-name').value = getSetting('sheetName', DEFAULT_SHEET_NAME);
+  document.getElementById('set-folder-id').value = getSetting('folderId', DEFAULT_FOLDER_ID);
+  document.getElementById('set-api-key').value = getSetting('apikey', '');
+}
+
+function logout() {
+  accessToken = null; userInfo = null; belege = [];
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('belege-list').innerHTML = '';
+  document.getElementById('batch-bar').style.display = 'none';
+}
+
+// ── TABS ──
+function showTab(tab) {
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['scan','history','settings'][i]===tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-'+tab).classList.add('active');
+}
+
+// ── FILE HANDLING ──
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const cameraInput = document.getElementById('camera-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); processFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', () => { processFiles(fileInput.files); fileInput.value=''; });
+cameraInput.addEventListener('change', () => { processFiles(cameraInput.files); cameraInput.value=''; });
+
+async function processFiles(files) {
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith('image/') && file.type !== 'application/pdf') continue;
+    const id = ++belegCounter;
+    const beleg = { id, file, status:'processing', datum:'', bart:'K', text:'', einnahme:'', ausgabe:'', ust:'20', konto:'', kontoname:'', confidence:0, hinweis:'', thumb:'', driveFileId:'', saved:false };
+    belege.push(beleg);
+    if (file.type.startsWith('image/')) beleg.thumb = await toDataUrl(file);
+    renderBelege();
+    await analyzeBeleg(beleg);
+    renderBelege();
+  }
+}
+
+async function toDataUrl(file) {
+  return new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+function toBase64(file) {
+  return new Promise((res,rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ── AI ANALYSIS ──
+async function analyzeBeleg(beleg) {
+  const apiKey = getSetting('apikey','');
+  if (!apiKey) { beleg.status='error'; beleg.hinweis='Kein API Key konfiguriert.'; return; }
+
+  try {
+    const base64 = await toBase64(beleg.file);
+    const mediaType = beleg.file.type === 'application/pdf' ? 'application/pdf' : (beleg.file.type || 'image/jpeg');
+    const accList = ACCOUNTS.map(a=>a.nr+' = '+a.name).join('\n');
+
+    const prompt = `Du bist ein österreichischer Buchaltungsassistent (EÜR). Analysiere diesen Beleg und extrahiere alle relevanten Daten für die Buchaltung.
+
+Verfügbare Konten:
+${accList}
+
+Regeln:
+- bart: "K" wenn Kassenbon/Bargeld/Barrechnung, "B" wenn Überweisung/SEPA/Bankbeleg
+- einnahme: Bruttobetrag wenn Einnahme (z.B. Zahlungseingang), sonst 0
+- ausgabe: Bruttobetrag wenn Ausgabe/Rechnung, sonst 0
+- ust: MwSt-Satz der Hauptposition (0, 5, 10, 13, 20)
+- konto: passendes Konto aus der Liste
+- text: "Lieferant - Kurzbeschreibung" (max 60 Zeichen)
+
+Antworte NUR mit JSON, keine Backticks, keine Erklärung:
+{"datum":"YYYY-MM-DD","bart":"K","text":"Lieferant - Was","einnahme":0,"ausgabe":0,"ust":20,"konto":"760","confidence":85,"hinweis":""}`;
+
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'x-api-key': apiKey, 'anthropic-version':'2023-06-01' },
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514', max_tokens:500,
+        messages:[{ role:'user', content:[
+          { type:'image', source:{ type:'base64', media_type: mediaType, data: base64 } },
+          { type:'text', text: prompt }
+        ]}]
+      })
+    });
+
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error.message);
+    const raw = data.content?.find(c=>c.type==='text')?.text || '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g,'').trim());
+
+    beleg.datum = parsed.datum||'';
+    beleg.bart = (parsed.bart||'K').toUpperCase().charAt(0);
+    beleg.text = parsed.text||'';
+    beleg.einnahme = parsed.einnahme>0 ? String(parseFloat(parsed.einnahme).toFixed(2)) : '';
+    beleg.ausgabe = parsed.ausgabe>0 ? String(parseFloat(parsed.ausgabe).toFixed(2)) : '';
+    beleg.ust = String(parsed.ust||'20');
+    beleg.konto = parsed.konto||'';
+    beleg.kontoname = findAcc(parsed.konto)?.name||'';
+    beleg.confidence = parsed.confidence||0;
+    beleg.hinweis = parsed.hinweis||'';
+    beleg.status = 'ready';
+  } catch(e) {
+    beleg.status = 'error';
+    beleg.hinweis = 'Analyse fehlgeschlagen: '+e.message;
+  }
+}
+
+// ── DUPLICATE CHECK ──
+function isDup(beleg) {
+  return belege.some(b =>
+    b.id !== beleg.id &&
+    b.datum === beleg.datum &&
+    Math.abs(parseFloat(b.ausgabe||b.einnahme||0) - parseFloat(beleg.ausgabe||beleg.einnahme||0)) < 0.01 &&
+    b.text && beleg.text && b.text.toLowerCase() === beleg.text.toLowerCase()
+  );
+}
+
+// ── RENDER ──
+function renderBelege() {
+  const list = document.getElementById('belege-list');
+  const ready = belege.filter(b=>b.status==='ready'||b.status==='saved');
+
+  if (!belege.length) { list.innerHTML=''; document.getElementById('batch-bar').style.display='none'; return; }
+
+  list.innerHTML = belege.map(b => {
+    const dup = isDup(b);
+    const einnahme = parseFloat(b.einnahme||0)>0;
+    const betrag = einnahme ? b.einnahme : b.ausgabe;
+    const accOpts = ACCOUNTS.map(a=>`<option value="${a.nr}" ${a.nr===b.konto?'selected':''}>${a.nr} – ${esc(a.name)}</option>`).join('');
+
+    return `<div class="beleg-card ${dup?'dup':''}" id="card-${b.id}">
+      <div class="beleg-header">
+        ${b.thumb ? `<img class="beleg-thumb" src="${b.thumb}" alt="Beleg">` : `<div class="beleg-thumb-placeholder">🧾</div>`}
+        <div class="beleg-info">
+          <div class="beleg-name">${esc(b.text||b.file.name||'Beleg')}</div>
+          <div class="beleg-meta">${b.datum?toAT(b.datum)+' · ':''} ${b.file.name}</div>
+        </div>
+        ${b.status==='processing' ? `<span class="pill processing"><span class="spinner"></span> Analyse...</span>` : ''}
+        ${b.status==='saved' ? `<span class="pill saved">✓ Gespeichert</span>` : ''}
+        ${b.status==='error' ? `<span class="pill dup">⚠ Fehler</span>` : ''}
+        ${b.status==='ready' && betrag ? `<span class="pill ${einnahme?'ein':'aus'}">${einnahme?'+':'-'}${betrag} €</span>` : ''}
+        ${dup ? `<span class="pill dup">⚠ Duplikat</span>` : ''}
+      </div>
+      ${b.hinweis ? `<div class="hinweis">💡 ${esc(b.hinweis)}</div>` : ''}
+      ${b.status!=='processing' ? `
+      <div class="beleg-fields">
+        <div class="field-grid">
+          <div class="field"><label>Monat</label><input type="text" value="${esc(getMonth(b.datum))}" readonly></div>
+          <div class="field"><label>Zahlungsdatum</label><input type="date" value="${esc(b.datum)}" onchange="updateBeleg(${b.id},'datum',this.value)"></div>
+          <div class="field"><label>B-Art</label><select onchange="updateBeleg(${b.id},'bart',this.value)">
+            <option value="K" ${b.bart==='K'?'selected':''}>K – Kassa</option>
+            <option value="B" ${b.bart==='B'?'selected':''}>B – Bank</option>
+          </select></div>
+          <div class="field field-full"><label>Text / Buchungstext</label><input type="text" value="${esc(b.text)}" onchange="updateBeleg(${b.id},'text',this.value)"></div>
+          <div class="field"><label>Einnahme €</label><input type="number" step="0.01" value="${esc(b.einnahme)}" onchange="updateBeleg(${b.id},'einnahme',this.value)"></div>
+          <div class="field"><label>Ausgabe €</label><input type="number" step="0.01" value="${esc(b.ausgabe)}" onchange="updateBeleg(${b.id},'ausgabe',this.value)"></div>
+          <div class="field"><label>USt %</label><select onchange="updateBeleg(${b.id},'ust',this.value)">
+            ${['0','5','10','13','20'].map(u=>`<option value="${u}" ${u===b.ust?'selected':''}>${u}%</option>`).join('')}
+          </select></div>
+          <div class="field field-full"><label>Konto</label><select onchange="updateBelegKonto(${b.id},this.value)">
+            <option value="">– Konto wählen –</option>${accOpts}
+          </select></div>
+          <div class="field field-full"><label>Kontobezeichnung</label><input type="text" value="${esc(b.kontoname)}" readonly></div>
+        </div>
+      </div>
+      <div class="beleg-actions">
+        ${b.status!=='saved' ? `<button class="btn-sm primary" onclick="saveBeleg(${b.id})">💾 Ins Sheet speichern</button>` : ''}
+        <button class="btn-sm danger" onclick="deleteBeleg(${b.id})">🗑 Löschen</button>
+        <span class="confidence">${b.confidence?'KI: '+b.confidence+'%':''}</span>
+      </div>` : ''}
+    </div>`;
+  }).join('');
+
+  const unsaved = belege.filter(b=>b.status==='ready').length;
+  const bar = document.getElementById('batch-bar');
+  if (unsaved > 1) {
+    bar.style.display='flex';
+    document.getElementById('batch-count').textContent = unsaved+' Belege bereit zum Speichern';
+  } else { bar.style.display='none'; }
+}
+
+function updateBeleg(id, field, val) {
+  const b = belege.find(b=>b.id===id); if (!b) return;
+  b[field] = val;
+  if (field==='datum') {
+    // re-render just the monat field
+    const card = document.getElementById('card-'+id);
+    if (card) { const inp = card.querySelector('input[readonly]'); if (inp) inp.value = getMonth(val); }
+  }
+}
+
+function updateBelegKonto(id, nr) {
+  const b = belege.find(b=>b.id===id); if (!b) return;
+  b.konto = nr;
+  const acc = findAcc(nr);
+  b.kontoname = acc ? acc.name : '';
+  // Update kontoname field without full re-render
+  const card = document.getElementById('card-'+id);
+  if (card) {
+    const inputs = card.querySelectorAll('input[readonly]');
+    inputs.forEach(i => { if (i.previousElementSibling?.textContent==='Kontobezeichnung') i.value = b.kontoname; });
+  }
+}
+
+function deleteBeleg(id) {
+  belege = belege.filter(b=>b.id!==id);
+  renderBelege();
+}
+
+// ── GOOGLE SHEETS ──
+async function saveBeleg(id) {
+  const b = belege.find(b=>b.id===id); if (!b) return;
+  b.status = 'saving'; renderBelege();
+
+  try {
+    // 1. Upload to Drive
+    if (b.thumb || b.file) {
+      b.driveFileId = await uploadToDrive(b);
+    }
+    // 2. Append to Sheet
+    await appendToSheet(b);
+    b.status = 'saved';
+    showStatus('global-status', '✓ Beleg gespeichert!', 'success', 3000);
+  } catch(e) {
+    b.status = 'ready';
+    b.hinweis = 'Speichern fehlgeschlagen: '+e.message;
+    showStatus('global-status', '⚠ Fehler: '+e.message, 'err', 5000);
+  }
+  renderBelege();
+}
+
+async function saveAll() {
+  const unsaved = belege.filter(b=>b.status==='ready');
+  document.getElementById('btn-save-all').disabled = true;
+  for (const b of unsaved) { await saveBeleg(b.id); }
+  document.getElementById('btn-save-all').disabled = false;
+}
+
+async function uploadToDrive(beleg) {
+  const folderId = getSetting('folderId', DEFAULT_FOLDER_ID);
+  const fileName = (beleg.datum||'unbekannt')+'_'+beleg.text.substring(0,30).replace(/[^a-zA-Z0-9äöüÄÖÜ_-]/g,'_')+'.'+beleg.file.name.split('.').pop();
+
+  const meta = JSON.stringify({ name: fileName, parents: [folderId] });
+  const form = new FormData();
+  form.append('metadata', new Blob([meta], {type:'application/json'}));
+  form.append('file', beleg.file);
+
+  const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method:'POST',
+    headers:{ Authorization: 'Bearer '+accessToken },
+    body: form
+  });
+  if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Drive Upload fehlgeschlagen'); }
+  const d = await r.json();
+  return d.id;
+}
+
+async function appendToSheet(b) {
+  const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
+  const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
+
+  const einnahme = parseFloat(b.einnahme||0);
+  const ausgabe = parseFloat(b.ausgabe||0);
+  const betrag = einnahme>0 ? einnahme : ausgabe;
+  const netto = calcNetto(betrag, b.ust);
+
+  const row = [
+    getMonth(b.datum),
+    toAT(b.datum),
+    b.bart||'K',
+    '',
+    b.text||'',
+    '',
+    einnahme>0 ? einnahme.toFixed(2) : '',
+    ausgabe>0 ? ausgabe.toFixed(2) : '',
+    b.ust||'20',
+    netto,
+    b.konto||'',
+    b.kontoname||''
+  ];
+
+  const range = encodeURIComponent(sheetName+'!A:L');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
+
+  const r = await fetch(url, {
+    method:'POST',
+    headers:{ Authorization: 'Bearer '+accessToken, 'Content-Type':'application/json' },
+    body: JSON.stringify({ values: [row] })
+  });
+  if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
+}
+
+// ── HISTORY ──
+async function loadHistory() {
+  const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
+  const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
+  showStatus('history-status', 'Verlauf wird geladen...', 'info');
+
+  try {
+    const range = encodeURIComponent(sheetName+'!A4:L200');
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+    const r = await fetch(url, { headers:{ Authorization: 'Bearer '+accessToken } });
+    if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message); }
+    const data = await r.json();
+    const rows = (data.values||[]).filter(r=>r.some(c=>c));
+
+    document.getElementById('history-status').innerHTML='';
+    if (!rows.length) {
+      document.getElementById('history-list').innerHTML='<div class="empty-state"><span class="empty-icon">📋</span><p>Noch keine Einträge im Sheet.</p></div>';
+      return;
+    }
+    document.getElementById('history-list').innerHTML = rows.slice().reverse().map(r => {
+      const einnahme = parseFloat(r[6]||0)>0;
+      const betrag = r[6]||r[7]||'';
+      return `<div class="hist-item">
+        <span class="hist-date">${r[1]||r[0]||'–'}</span>
+        <span class="hist-text">${esc(r[4]||'–')}</span>
+        <span class="hist-betrag ${einnahme?'ein':'aus'}">${einnahme?'+':'-'}${betrag} €</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    showStatus('history-status', '⚠ Fehler: '+e.message, 'err');
+  }
+}
+
+// ── SETTINGS ──
+function saveSettings() {
+  setSetting('sheetId', document.getElementById('set-sheet-id').value.trim());
+  setSetting('sheetName', document.getElementById('set-sheet-name').value.trim() || DEFAULT_SHEET_NAME);
+  setSetting('folderId', document.getElementById('set-folder-id').value.trim());
+  showStatus('global-status','✓ Einstellungen gespeichert','success',2500);
+  showTab('scan');
+}
+function saveApiKey() {
+  setSetting('apikey', document.getElementById('set-api-key').value.trim());
+  showStatus('global-status','✓ API Key gespeichert','success',2500);
+  showTab('scan');
+}
+
+// ── STATUS ──
+function showStatus(containerId, msg, type, autohide) {
+  const el = document.getElementById(containerId); if (!el) return;
+  el.innerHTML = `<div class="status ${type}">${msg}</div>`;
+  if (autohide) setTimeout(()=>{ if(el) el.innerHTML=''; }, autohide);
+}
+
+// Pre-fill settings from defaults
+window.addEventListener('load', () => {
+  const savedKey = getSetting('apikey','');
+  if (savedKey) document.getElementById('api-key-input').value = savedKey;
+});
+</script>
+</body>
+</html>
