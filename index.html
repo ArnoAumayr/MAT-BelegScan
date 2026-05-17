@@ -942,7 +942,7 @@ async function appendToSheet(b) {
 
   // Write Konto to AE if available
   if (b.konto) {
-    const aeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!AE'+nextRow)}?valueInputOption=RAW`;
+    const aeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!M'+nextRow)}?valueInputOption=RAW`;
     await fetch(aeUrl, {
       method: 'PUT',
       headers: { Authorization: 'Bearer '+accessToken, 'Content-Type': 'application/json' },
