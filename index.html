@@ -923,8 +923,7 @@ async function uploadToDrive(beleg) {
   const rJson = await r.json();
   console.log('Drive response:', JSON.stringify(rJson));
   if (!r.ok) { throw new Error(rJson.error?.message||'Drive Upload fehlgeschlagen'); }
-  const d = await r.json();
-  return d.id;
+  return rJson.id;
 }
 
 async function appendToSheet(b) {
