@@ -885,31 +885,46 @@ async function appendToSheet(b) {
   const einnahme = parseFloat(b.einnahme||0);
   const ausgabe = parseFloat(b.ausgabe||0);
 
-  // Find next empty row by reading column D (where our data starts)
-  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!D:D')}`;
+  // Step 1: Get sheet metadata to find actual column positions
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?includeGridData=false`;
+  const metaR = await fetch(metaUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
+  const meta = await metaR.json();
+  const sheet = meta.sheets?.find(s => s.properties?.title === sheetName);
+  console.log('Sheet found:', sheet?.properties?.title, 'columnCount:', sheet?.properties?.gridProperties?.columnCount);
+
+  // Step 2: Find next empty row using column E (B/K field - always filled)
+  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!E:E')}`;
   const getR = await fetch(getUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
-  if (!getR.ok) { const e=await getR.json(); throw new Error(e.error?.message||'Sheet lesen fehlgeschlagen'); }
   const getData = await getR.json();
   const nextRow = ((getData.values||[]).length) + 1;
+  console.log('Writing to row:', nextRow);
 
-  // Write individual cells to guarantee correct column placement
-  // D=Datum, E=B/K, G=Text, I=Einnahme, J=Ausgabe, K=USt%
-  const cellData = [
-    { range: sheetName+'!D'+nextRow, values: [[toAT(b.datum)]] },
-    { range: sheetName+'!E'+nextRow, values: [[b.bart||'K']] },
-    { range: sheetName+'!G'+nextRow, values: [[b.text||'']] },
-    { range: sheetName+'!I'+nextRow, values: [[einnahme>0 ? einnahme.toFixed(2) : '']] },
-    { range: sheetName+'!J'+nextRow, values: [[ausgabe>0 ? ausgabe.toFixed(2) : '']] },
-    { range: sheetName+'!K'+nextRow, values: [[b.ust||'20']] },
+  // Step 3: Write full row A:K so positions are unambiguous
+  // A=leer, B=leer, C=leer, D=Datum, E=B/K, F=leer, G=Text, H=leer, I=Einnahme, J=Ausgabe, K=USt%
+  const fullRow = [
+    '',                                        // A
+    '',                                        // B
+    '',                                        // C
+    toAT(b.datum),                             // D - Datum
+    b.bart||'K',                               // E - B/K
+    '',                                        // F
+    b.text||'',                                // G - Text
+    '',                                        // H
+    einnahme>0 ? einnahme.toFixed(2) : '',     // I - Einnahme
+    ausgabe>0 ? ausgabe.toFixed(2) : '',       // J - Ausgabe
+    b.ust||'20',                               // K - USt%
   ];
 
-  const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchUpdate`;
-  const r = await fetch(batchUrl, {
-    method:'POST',
+  console.log('Row data:', fullRow);
+
+  const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':K'+nextRow)}?valueInputOption=USER_ENTERED`;
+  const r = await fetch(writeUrl, {
+    method:'PUT',
     headers:{ Authorization: 'Bearer '+accessToken, 'Content-Type':'application/json' },
-    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data: cellData })
+    body: JSON.stringify({ values: [fullRow] })
   });
   if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
+  console.log('Sheet write OK, row:', nextRow);
 }
 
 // ── HISTORY ──
