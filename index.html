@@ -892,12 +892,18 @@ async function appendToSheet(b) {
   const sheet = meta.sheets?.find(s => s.properties?.title === sheetName);
   console.log('Sheet found:', sheet?.properties?.title, 'columnCount:', sheet?.properties?.gridProperties?.columnCount);
 
-  // Step 2: Find next empty row using column E (B/K field - always filled)
-  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!E:E')}`;
+  // Step 2: Find next empty row - read ALL data to get accurate count
+  const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A:K')}`;
   const getR = await fetch(getUrl, { headers:{ Authorization: 'Bearer '+accessToken } });
   const getData = await getR.json();
-  const nextRow = ((getData.values||[]).length) + 1;
-  console.log('Writing to row:', nextRow);
+  // Find last non-empty row across all columns
+  const allRows = getData.values || [];
+  let lastFilledRow = 0;
+  allRows.forEach((row, idx) => {
+    if (row.some(cell => cell !== '' && cell !== undefined)) lastFilledRow = idx + 1;
+  });
+  const nextRow = lastFilledRow + 1;
+  console.log('Total rows with data:', lastFilledRow, '→ Writing to row:', nextRow);
 
   // Step 3: Write full row A:K so positions are unambiguous
   // A=leer, B=leer, C=leer, D=Datum, E=B/K, F=leer, G=Text, H=leer, I=Einnahme, J=Ausgabe, K=USt%
