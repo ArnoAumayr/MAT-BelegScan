@@ -434,6 +434,7 @@ body {
 
 <!-- Google Identity -->
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
 <script>
 // ── CONFIG ──
@@ -584,13 +585,31 @@ async function toDataUrl(file) {
   });
 }
 
-function toBase64(file) {
+async function toBase64(file) {
+  if (file.type === 'application/pdf') {
+    return await pdfToBase64(file);
+  }
   return new Promise((res,rej) => {
     const r = new FileReader();
     r.onload = () => res(r.result.split(',')[1]);
     r.onerror = rej;
     r.readAsDataURL(file);
   });
+}
+
+async function pdfToBase64(file) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const page = await pdf.getPage(1); // first page
+  const viewport = page.getViewport({ scale: 2.0 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d');
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  const dataUrl = canvas.toDataURL('image/png');
+  return dataUrl.split(',')[1];
 }
 
 // ── AI ANALYSIS ──
@@ -600,7 +619,7 @@ async function analyzeBeleg(beleg) {
 
   try {
     const base64 = await toBase64(beleg.file);
-    const mediaType = beleg.file.type === 'application/pdf' ? 'application/pdf' : (beleg.file.type || 'image/jpeg');
+    const mediaType = beleg.file.type === 'application/pdf' ? 'image/png' : (beleg.file.type || 'image/jpeg');
     const accList = ACCOUNTS.map(a=>a.nr+' = '+a.name).join('\n');
 
     const prompt = `Du bist ein österreichischer Buchaltungsassistent (EÜR). Analysiere diesen Beleg und extrahiere alle relevanten Daten für die Buchaltung.
