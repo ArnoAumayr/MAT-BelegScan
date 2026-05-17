@@ -862,13 +862,19 @@ async function saveBeleg(id) {
 
   try {
     // 1. Upload to Drive
-    if (b.thumb || b.file) {
+    try {
       b.driveFileId = await uploadToDrive(b);
+      console.log('Drive upload OK:', b.driveFileId);
+    } catch(driveErr) {
+      console.error('Drive upload FAILED:', driveErr.message);
+      b.hinweis = 'Drive Fehler: '+driveErr.message;
+      // Continue with sheet even if drive fails
     }
     // 2. Append to Sheet
     await appendToSheet(b);
     b.status = 'saved';
-    showStatus('global-status', '✓ Beleg gespeichert!', 'success', 3000);
+    const driveStatus = b.driveFileId ? '✓ Gespeichert + Drive' : '✓ Sheet OK (Drive fehlgeschlagen)';
+    showStatus('global-status', driveStatus, b.driveFileId ? 'success' : 'warn', 4000);
   } catch(e) {
     b.status = 'ready';
     b.hinweis = 'Speichern fehlgeschlagen: '+e.message;
@@ -908,12 +914,15 @@ async function uploadToDrive(beleg) {
   form.append('metadata', new Blob([meta], {type:'application/json'}));
   form.append('file', new Blob([uploadBlob], {type: mimeType}));
 
+  console.log('Uploading to Drive:', fileName, 'type:', mimeType, 'folder:', folderId);
   const r = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
     method:'POST',
     headers:{ Authorization: 'Bearer '+accessToken },
     body: form
   });
-  if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message||'Drive Upload fehlgeschlagen: '+JSON.stringify(e)); }
+  const rJson = await r.json();
+  console.log('Drive response:', JSON.stringify(rJson));
+  if (!r.ok) { throw new Error(rJson.error?.message||'Drive Upload fehlgeschlagen'); }
   const d = await r.json();
   return d.id;
 }
