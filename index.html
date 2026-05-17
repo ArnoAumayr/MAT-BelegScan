@@ -917,10 +917,10 @@ async function appendToSheet(b) {
   // H = Re-Datum: IMMER schreiben (Rechnungsdatum vom Beleg)
   const hCol = toAT(b.redatum);
 
-  // A:M — L leer, M=Konto (nur Zahl)
-  const kontoNr = b.konto ? String(b.konto).replace(/\D/g,'') : '';
+  // A:M — A=laufende Nummer, L leer, M=Konto (nur Zahl)
+  const kontoNr = b.konto ? String(b.konto).replace(/[^0-9]/g,'') : '';
   const fullRow = [
-    '',          // A
+    b.belegNr||'',  // A - laufende Nummer
     '',          // B
     '',          // C
     dCol,        // D - Zahlungsdatum
