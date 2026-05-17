@@ -646,7 +646,12 @@ async function analyzeBeleg(beleg) {
     const mediaType = beleg.file.type === 'application/pdf' ? 'image/jpeg' : (beleg.file.type || 'image/jpeg');
     const accList = ACCOUNTS.map(a=>a.nr+' = '+a.name).join('\n');
 
-    const prompt = `Du bist ein österreichischer Buchaltungsassistent (EÜR). Analysiere diesen Beleg und extrahiere alle relevanten Daten für die Buchaltung.
+    const prompt = `Du bist ein österreichischer Buchaltungsassistent (EÜR) für das Unternehmen MAKE A TEAM e.U. (auch bekannt als Actionpainting Wien / ActionPainting Wien).
+Analysiere diesen Beleg und extrahiere alle relevanten Daten für die Buchaltung.
+
+WICHTIG für Einnahme/Ausgabe-Erkennung:
+- Wenn der Aussteller/Absender der Rechnung "MAKE A TEAM", "ActionPainting Wien", "Actionpainting Wien", "Arno Aumayr" ist → das ist eine EIGENE Rechnung → einnahme > 0
+- Wenn eine andere Firma oder Person die Rechnung ausstellt und MAKE A TEAM der Empfänger ist → das ist eine Ausgabe → ausgabe > 0
 
 Verfügbare Konten:
 ${accList}
@@ -789,8 +794,16 @@ function renderBelege() {
 
 function setEinAus(id, typ) {
   const b = belege.find(b=>b.id===id); if (!b) return;
-  if (typ==='ein') { b.einnahme = b.ausgabe||b.einnahme||''; b.ausgabe=''; }
-  else { b.ausgabe = b.einnahme||b.ausgabe||''; b.einnahme=''; }
+  if (typ==='ein') {
+    b.einnahme = b.ausgabe||b.einnahme||'';
+    b.ausgabe='';
+    b.datum=''; // Zahlungsdatum löschen bei Einnahme
+  } else {
+    b.ausgabe = b.einnahme||b.ausgabe||'';
+    b.einnahme='';
+    // Zahlungsdatum vorschlagen = Rechnungsdatum
+    if (!b.datum && b.redatum) b.datum = b.redatum;
+  }
   renderBelege();
 }
 
@@ -910,8 +923,8 @@ async function appendToSheet(b) {
     '',       // F
     b.text||'', // G - Text
     hCol,     // H - Re-Datum (immer)
-    einnahme > 0 ? einnahme.toFixed(2) : '', // I - Einnahme
-    ausgabe > 0 ? ausgabe.toFixed(2) : '',   // J - Ausgabe
+    einnahme > 0 ? einnahme.toFixed(2).replace('.',',') : '', // I - Einnahme
+    ausgabe > 0 ? ausgabe.toFixed(2).replace('.',',') : '',   // J - Ausgabe
     b.ust||'20', // K - USt%
   ];
 
