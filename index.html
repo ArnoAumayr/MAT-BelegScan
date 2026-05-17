@@ -471,6 +471,14 @@ let accessToken = null;
 let userInfo = null;
 let belege = [];
 let belegCounter = 0;
+let belegNrCounter = parseInt(localStorage.getItem('belegscan_nrcounter')||'0');
+
+function nextBelegNr(datum) {
+  belegNrCounter++;
+  localStorage.setItem('belegscan_nrcounter', belegNrCounter);
+  const d = datum ? datum.replace(/-/g,'') : new Date().toISOString().slice(0,10).replace(/-/g,'');
+  return d + '-' + String(belegNrCounter).padStart(4,'0');
+}
 
 // ── SETTINGS ──
 function getSetting(k, def) { return localStorage.getItem('belegscan_'+k) || def; }
@@ -567,7 +575,7 @@ async function processFiles(files) {
   for (const file of Array.from(files)) {
     if (!file.type.startsWith('image/') && file.type !== 'application/pdf') continue;
     const id = ++belegCounter;
-    const beleg = { id, file, status:'processing', datum:'', redatum:'', bart:'K', text:'', einnahme:'', ausgabe:'', ust:'20', konto:'', kontoname:'', confidence:0, hinweis:'', thumb:'', driveFileId:'', saved:false };
+    const beleg = { id, file, status:'processing', datum:'', redatum:'', bart:'K', text:'', einnahme:'', ausgabe:'', ust:'20', konto:'', kontoname:'', confidence:0, hinweis:'', thumb:'', driveFileId:'', belegNr:'', saved:false };
     belege.push(beleg);
     if (file.type.startsWith('image/')) beleg.thumb = await toDataUrl(file);
     else if (file.type === 'application/pdf') {
@@ -680,7 +688,8 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
     const parsed = JSON.parse(jsonMatch[0]);
 
     beleg.redatum = parsed.datum||'';
-    beleg.datum = parsed.datum||'';
+    // Zahlungsdatum: bei Ausgaben = Rechnungsdatum als Vorschlag, bei Einnahmen leer lassen
+    beleg.datum = parsed.ausgabe>0 ? (parsed.datum||'') : '';
     beleg.bart = (parsed.bart||'K').toUpperCase().charAt(0);
     beleg.text = parsed.text||'';
     beleg.einnahme = parsed.einnahme>0 ? String(parseFloat(parsed.einnahme).toFixed(2)) : '';
@@ -690,6 +699,7 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
     beleg.kontoname = findAcc(parsed.konto)?.name||'';
     beleg.confidence = parsed.confidence||0;
     beleg.hinweis = parsed.hinweis||'';
+    beleg.belegNr = nextBelegNr(beleg.datum);
     beleg.status = 'ready';
   } catch(e) {
     beleg.status = 'error';
@@ -850,7 +860,8 @@ async function saveAll() {
 
 async function uploadToDrive(beleg) {
   const folderId = getSetting('folderId', DEFAULT_FOLDER_ID);
-  const fileName = (beleg.datum||'unbekannt')+'_'+beleg.text.substring(0,30).replace(/[^a-zA-Z0-9äöüÄÖÜ_-]/g,'_')+'.'+beleg.file.name.split('.').pop();
+  const nr = beleg.belegNr || (beleg.datum||'unbekannt');
+  const fileName = nr+'_'+beleg.text.substring(0,30).replace(/[^a-zA-Z0-9äöüÄÖÜ_-]/g,'_')+'.'+beleg.file.name.split('.').pop();
 
   const meta = JSON.stringify({ name: fileName, parents: [folderId] });
   const form = new FormData();
@@ -877,18 +888,17 @@ async function appendToSheet(b) {
   const netto = calcNetto(betrag, b.ust);
 
   const row = [
-    getMonth(b.datum),
-    toAT(b.datum),
-    b.bart||'K',
-    '',
-    b.text||'',
-    b.redatum ? toAT(b.redatum) : '',
-    einnahme>0 ? einnahme.toFixed(2) : '',
-    ausgabe>0 ? ausgabe.toFixed(2) : '',
-    b.ust||'20',
-    netto,
-    b.konto||'',
-    b.kontoname||''
+    '',                                      // A - leer
+    '',                                      // B - leer
+    '',                                      // C - leer
+    toAT(b.datum),                           // D - Datum (Zahlungsdatum)
+    b.bart||'K',                             // E - B/K
+    '',                                      // F - leer
+    b.text||'',                              // G - Text
+    '',                                      // H - leer
+    einnahme>0 ? einnahme.toFixed(2) : '',   // I - Einnahme inkl. MwSt
+    ausgabe>0 ? ausgabe.toFixed(2) : '',     // J - Ausgabe inkl. MwSt
+    b.ust||'20',                             // K - USt%
   ];
 
   const range = encodeURIComponent(sheetName+'!A:L');
@@ -909,7 +919,7 @@ async function loadHistory() {
   showStatus('history-status', 'Verlauf wird geladen...', 'info');
 
   try {
-    const range = encodeURIComponent(sheetName+'!A4:L200');
+    const range = encodeURIComponent(sheetName+'!A2:L500');
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
     const r = await fetch(url, { headers:{ Authorization: 'Bearer '+accessToken } });
     if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message); }
@@ -922,11 +932,11 @@ async function loadHistory() {
       return;
     }
     document.getElementById('history-list').innerHTML = rows.slice().reverse().map(r => {
-      const einnahme = parseFloat(r[6]||0)>0;
-      const betrag = r[6]||r[7]||'';
+      const einnahme = parseFloat(r[8]||0)>0;
+      const betrag = r[8]||r[9]||'';
       return `<div class="hist-item">
-        <span class="hist-date">${r[1]||r[0]||'–'}</span>
-        <span class="hist-text">${esc(r[4]||'–')}</span>
+        <span class="hist-date" style="min-width:80px">${r[3]||'–'}</span>
+        <span class="hist-text">${esc(r[6]||'–')}</span>
         <span class="hist-betrag ${einnahme?'ein':'aus'}">${einnahme?'+':'-'}${betrag} €</span>
       </div>`;
     }).join('');
