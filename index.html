@@ -635,12 +635,15 @@ Antworte NUR mit JSON, keine Backticks, keine Erklärung:
     );
 
     const data = await resp.json();
+    console.log('Gemini raw response:', JSON.stringify(data).substring(0, 500));
     if (data.error) throw new Error(data.error.message);
-    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+    let raw = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    console.log('Gemini text:', raw.substring(0, 300));
+    if (!raw) throw new Error('Leere Antwort von Gemini. Vollständige Response: ' + JSON.stringify(data).substring(0,300));
     // Strip markdown fences and extract JSON object
     raw = raw.replace(/```json|```/g,'').trim();
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('Kein JSON in Antwort gefunden: ' + raw.substring(0,100));
+    if (!jsonMatch) throw new Error('Kein JSON gefunden. Gemini antwortete: ' + raw.substring(0,150));
     const parsed = JSON.parse(jsonMatch[0]);
 
     beleg.redatum = parsed.datum||'';
