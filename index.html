@@ -931,6 +931,7 @@ async function appendToSheet(b) {
     b.ust||'20', // K - USt%
   ];
 
+  // Write A:K first
   const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':K'+nextRow)}?valueInputOption=RAW`;
   const r = await fetch(writeUrl, {
     method: 'PUT',
@@ -938,6 +939,16 @@ async function appendToSheet(b) {
     body: JSON.stringify({ values: [fullRow] })
   });
   if (!r.ok) { const e = await r.json(); throw new Error(e.error?.message||'Sheets Fehler'); }
+
+  // Write Konto to AE if available
+  if (b.konto) {
+    const aeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!AE'+nextRow)}?valueInputOption=RAW`;
+    await fetch(aeUrl, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer '+accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [[b.konto]] })
+    });
+  }
 }
 
 
