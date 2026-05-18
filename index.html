@@ -991,9 +991,19 @@ let historyRows = []; // cached sheet data
 
 // Parse Austrian/German number format: 1.500,00 → 1500.00
 function parseDE(s) {
-  if (!s) return 0;
-  const clean = String(s).split('.').join('').replace(',','.');
-  return parseFloat(clean) || 0;
+  if (!s && s !== 0) return 0;
+  // With UNFORMATTED_VALUE, Sheets returns actual numbers
+  if (typeof s === 'number') return s;
+  // Fallback for strings: handle both DE (1.234,56) and EN (1234.56) format
+  const str = String(s).trim();
+  if (str.includes(',') && str.includes('.')) {
+    // DE format: 1.234,56
+    return parseFloat(str.split('.').join('').replace(',','.')) || 0;
+  } else if (str.includes(',')) {
+    // DE without thousands: 1234,56
+    return parseFloat(str.replace(',','.')) || 0;
+  }
+  return parseFloat(str) || 0;
 }
 
 async function loadHistory() {
@@ -1003,7 +1013,7 @@ async function loadHistory() {
 
   try {
     const range = encodeURIComponent(sheetName+'!A1:M500');
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`;
     const r = await fetch(url, { headers:{ Authorization: 'Bearer '+accessToken } });
     if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message); }
     const data = await r.json();
