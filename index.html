@@ -1007,6 +1007,8 @@ async function loadHistory() {
     const r = await fetch(url, { headers:{ Authorization: 'Bearer '+accessToken } });
     if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message); }
     const data = await r.json();
+    // Debug: log first few raw values from sheet
+    console.log('Raw sheet values I/J cols:', (data.values||[]).slice(0,5).map(r => ({i: r[8], j: r[9]})));
     historyRows = (data.values||[]).map((r,i) => ({
       rowNum: i+1,
       nr:   r[0]||'',   // A - laufende Nr
