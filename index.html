@@ -1080,7 +1080,10 @@ function renderHistory() {
     }
     const idx = historyRows.indexOf(r);
     return `<div class="hist-item ${dupClass}" id="hrow-${idx}">
-      <span class="hist-date" style="min-width:75px;font-size:11px">${esc(r.redatum||r.datum||'–')}</span>
+      <div style="display:flex;flex-direction:column;min-width:90px;flex-shrink:0">
+        <span style="font-size:11px;color:var(--text2)">${esc(r.redatum||r.datum||'–')}</span>
+        ${r.nr ? `<span style="font-size:10px;color:var(--text3);font-family:var(--font-mono)">${esc(r.nr)}</span>` : ''}
+      </div>
       <span class="hist-text">${esc(r.text||'–')}</span>
       ${dupLabel}
       <span class="hist-betrag ${einnahme?'ein':'aus'}" style="white-space:nowrap">${einnahme?'+':'-'}${betrag} €</span>
