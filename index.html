@@ -989,6 +989,13 @@ async function appendToSheet(b) {
 
 let historyRows = []; // cached sheet data
 
+// Parse Austrian/German number format: 1.500,00 → 1500.00
+function parseDE(s) {
+  if (!s) return 0;
+  const clean = String(s).replace(/\./g,'').replace(',','.');
+  return parseFloat(clean) || 0;
+}
+
 async function loadHistory() {
   const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
   const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
@@ -1007,8 +1014,8 @@ async function loadHistory() {
       bart:  r[4]||'',  // E - B/K
       text:  r[6]||'',  // G - Text
       redatum: r[7]||'',// H - Re-Datum
-      einnahme: parseFloat(r[8]||0),  // I
-      ausgabe:  parseFloat(r[9]||0),  // J
+      einnahme: parseDE(r[8]),  // I
+      ausgabe:  parseDE(r[9]),  // J
       ust:   r[10]||'', // K
       konto: r[12]||'', // M
       dupState: '' // '', 'original', 'duplicate', 'possible'
