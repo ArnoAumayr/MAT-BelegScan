@@ -1030,20 +1030,66 @@ function renderHistory() {
     document.getElementById('history-list').innerHTML='<div class="empty-state"><span class="empty-icon">📋</span><p>Noch keine Einträge im Sheet.</p></div>';
     return;
   }
-  document.getElementById('history-list').innerHTML = historyRows.slice().reverse().map(r => {
+  // Sort by redatum desc, then rowNum desc
+  const sorted = historyRows.slice().sort((a,b) => {
+    const da = a.redatum||a.datum||'', db = b.redatum||b.datum||'';
+    if (da>db) return -1; if (da<db) return 1;
+    return b.rowNum - a.rowNum;
+  });
+  document.getElementById('history-list').innerHTML = sorted.map((r,i) => {
     const einnahme = r.einnahme > 0;
     const betrag = einnahme ? r.einnahme.toFixed(2) : r.ausgabe.toFixed(2);
-    let dupClass = '', dupLabel = '';
-    if (r.dupState==='original')   { dupClass='dup-original';   dupLabel='<span class="dup-label orig">✓ Original</span>'; }
-    if (r.dupState==='duplicate')  { dupClass='dup-duplicate';  dupLabel='<span class="dup-label dupl">✕ Duplikat</span>'; }
-    if (r.dupState==='possible')   { dupClass='dup-possible';   dupLabel='<span class="dup-label poss">? Möglich</span>'; }
-    return `<div class="hist-item ${dupClass}">
+    let dupClass = '', dupLabel = '', btnLabel = '', btnStyle = '';
+    if (r.dupState==='original') {
+      dupClass='dup-original';
+      dupLabel='<span class="dup-label orig">✓ Original</span>';
+      btnLabel='Als Duplikat markieren';
+      btnStyle='color:var(--red);border-color:var(--red)';
+    } else if (r.dupState==='duplicate') {
+      dupClass='dup-duplicate';
+      dupLabel='<span class="dup-label dupl">✕ Duplikat</span>';
+      btnLabel='Als Original markieren';
+      btnStyle='color:var(--green);border-color:var(--green)';
+    } else if (r.dupState==='possible') {
+      dupClass='dup-possible';
+      dupLabel='<span class="dup-label poss">? Möglich</span>';
+      btnLabel='Als Duplikat markieren';
+      btnStyle='color:var(--red);border-color:var(--red)';
+    } else {
+      btnLabel='Als Duplikat markieren';
+      btnStyle='color:var(--red);border-color:var(--red)';
+    }
+    const idx = historyRows.indexOf(r);
+    return `<div class="hist-item ${dupClass}" id="hrow-${idx}">
       <span class="hist-date" style="min-width:75px;font-size:11px">${esc(r.redatum||r.datum||'–')}</span>
       <span class="hist-text">${esc(r.text||'–')}</span>
       ${dupLabel}
-      <span class="hist-betrag ${einnahme?'ein':'aus'}">${einnahme?'+':'-'}${betrag} €</span>
+      <span class="hist-betrag ${einnahme?'ein':'aus'}" style="white-space:nowrap">${einnahme?'+':'-'}${betrag} €</span>
+      <button class="btn-sm" style="font-size:10px;padding:3px 8px;flex-shrink:0;${btnStyle}" onclick="toggleDupState(${idx})">${btnLabel}</button>
     </div>`;
   }).join('');
+}
+
+function toggleDupState(idx) {
+  const r = historyRows[idx];
+  if (!r) return;
+  if (r.dupState === 'duplicate') {
+    r.dupState = 'original';
+  } else if (r.dupState === 'original' || r.dupState === 'possible' || r.dupState === '') {
+    r.dupState = 'duplicate';
+  }
+  renderHistory();
+  // Update summary count
+  const dups = historyRows.filter(r=>r.dupState==='duplicate').length;
+  const poss = historyRows.filter(r=>r.dupState==='possible').length;
+  const sum = document.getElementById('dup-summary');
+  if (sum.style.display !== 'none') {
+    if (dups===0 && poss===0) {
+      sum.innerHTML='<div class="status success">✓ Keine Duplikate markiert!</div>';
+    } else {
+      sum.innerHTML=`<div class="status warn">🔍 ${dups} Duplikate (🔴) und ${poss} mögliche (🟡) — ${historyRows.length-dups} Einträge werden exportiert.</div>`;
+    }
+  }
 }
 
 function runDupCheck() {
