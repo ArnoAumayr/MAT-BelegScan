@@ -304,6 +304,13 @@ body {
 .settings-row input:focus { outline: none; border-color: var(--accent2); }
 
 .empty-state { text-align: center; padding: 3rem 1rem; color: var(--text3); }
+.hist-item.dup-original { border-left: 3px solid var(--green); background: rgba(126,200,160,0.06); }
+.hist-item.dup-duplicate { border-left: 3px solid var(--red); background: rgba(224,112,112,0.06); }
+.hist-item.dup-possible { border-left: 3px solid var(--yellow); background: rgba(232,200,122,0.06); }
+.dup-label { font-size:10px; padding:2px 6px; border-radius:3px; font-weight:500; white-space:nowrap; flex-shrink:0; }
+.dup-label.orig { background:var(--green-bg); color:var(--green); }
+.dup-label.dupl { background:var(--red-bg); color:var(--red); }
+.dup-label.poss { background:var(--yellow-bg); color:var(--yellow); }
 .empty-state .empty-icon { font-size: 40px; margin-bottom: 1rem; display: block; opacity: .4; }
 .empty-state p { font-size: 13px; line-height: 1.6; }
 
@@ -382,14 +389,17 @@ body {
     <!-- HISTORY PANEL -->
     <div id="panel-history" class="panel">
       <div id="history-status"></div>
+      <div id="dup-summary" style="display:none"></div>
       <div id="history-list">
         <div class="empty-state">
           <span class="empty-icon">📋</span>
           <p>Noch keine Einträge geladen.<br>Klicke unten um den Verlauf zu laden.</p>
         </div>
       </div>
-      <div style="margin-top:1rem">
+      <div style="margin-top:1rem;display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn-primary" onclick="loadHistory()">🔄 Verlauf laden</button>
+        <button class="btn-primary" id="btn-dup-check" style="display:none;background:#e8c87a;color:#1a1a1a" onclick="runDupCheck()">🔍 Duplikate suchen</button>
+        <button class="btn-primary" id="btn-export" style="display:none;background:#7ec8a0;color:#1a1a1a" onclick="exportCSV()">📥 CSV Export</button>
       </div>
     </div>
 
@@ -977,36 +987,129 @@ async function appendToSheet(b) {
 }
 
 
+let historyRows = []; // cached sheet data
+
 async function loadHistory() {
   const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
   const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
   showStatus('history-status', 'Verlauf wird geladen...', 'info');
 
   try {
-    const range = encodeURIComponent(sheetName+'!A2:L500');
+    const range = encodeURIComponent(sheetName+'!A1:M500');
     const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
     const r = await fetch(url, { headers:{ Authorization: 'Bearer '+accessToken } });
     if (!r.ok) { const e=await r.json(); throw new Error(e.error?.message); }
     const data = await r.json();
-    const rows = (data.values||[]).filter(r=>r.some(c=>c));
+    historyRows = (data.values||[]).map((r,i) => ({
+      rowNum: i+1,
+      nr:   r[0]||'',   // A - laufende Nr
+      datum: r[3]||'',  // D - Zahlungsdatum
+      bart:  r[4]||'',  // E - B/K
+      text:  r[6]||'',  // G - Text
+      redatum: r[7]||'',// H - Re-Datum
+      einnahme: parseFloat(r[8]||0),  // I
+      ausgabe:  parseFloat(r[9]||0),  // J
+      ust:   r[10]||'', // K
+      konto: r[12]||'', // M
+      dupState: '' // '', 'original', 'duplicate', 'possible'
+    })).filter(r => r.text||r.einnahme||r.ausgabe);
 
     document.getElementById('history-status').innerHTML='';
-    if (!rows.length) {
-      document.getElementById('history-list').innerHTML='<div class="empty-state"><span class="empty-icon">📋</span><p>Noch keine Einträge im Sheet.</p></div>';
-      return;
-    }
-    document.getElementById('history-list').innerHTML = rows.slice().reverse().map(r => {
-      const einnahme = parseFloat(r[8]||0)>0;
-      const betrag = r[8]||r[9]||'';
-      return `<div class="hist-item">
-        <span class="hist-date" style="min-width:80px">${r[3]||'–'}</span>
-        <span class="hist-text">${esc(r[6]||'–')}</span>
-        <span class="hist-betrag ${einnahme?'ein':'aus'}">${einnahme?'+':'-'}${betrag} €</span>
-      </div>`;
-    }).join('');
+    document.getElementById('dup-summary').style.display='none';
+    document.getElementById('btn-dup-check').style.display = historyRows.length ? '' : 'none';
+    document.getElementById('btn-export').style.display = historyRows.length ? '' : 'none';
+    renderHistory();
+    showStatus('history-status', '✓ '+historyRows.length+' Einträge geladen', 'success', 2000);
   } catch(e) {
     showStatus('history-status', '⚠ Fehler: '+e.message, 'err');
   }
+}
+
+function renderHistory() {
+  if (!historyRows.length) {
+    document.getElementById('history-list').innerHTML='<div class="empty-state"><span class="empty-icon">📋</span><p>Noch keine Einträge im Sheet.</p></div>';
+    return;
+  }
+  document.getElementById('history-list').innerHTML = historyRows.slice().reverse().map(r => {
+    const einnahme = r.einnahme > 0;
+    const betrag = einnahme ? r.einnahme.toFixed(2) : r.ausgabe.toFixed(2);
+    let dupClass = '', dupLabel = '';
+    if (r.dupState==='original')   { dupClass='dup-original';   dupLabel='<span class="dup-label orig">✓ Original</span>'; }
+    if (r.dupState==='duplicate')  { dupClass='dup-duplicate';  dupLabel='<span class="dup-label dupl">✕ Duplikat</span>'; }
+    if (r.dupState==='possible')   { dupClass='dup-possible';   dupLabel='<span class="dup-label poss">? Möglich</span>'; }
+    return `<div class="hist-item ${dupClass}">
+      <span class="hist-date" style="min-width:75px;font-size:11px">${esc(r.redatum||r.datum||'–')}</span>
+      <span class="hist-text">${esc(r.text||'–')}</span>
+      ${dupLabel}
+      <span class="hist-betrag ${einnahme?'ein':'aus'}">${einnahme?'+':'-'}${betrag} €</span>
+    </div>`;
+  }).join('');
+}
+
+function runDupCheck() {
+  if (!historyRows.length) return;
+  // Reset
+  historyRows.forEach(r => r.dupState = '');
+  let sichereDups = 0, moeglicheDups = 0;
+
+  for (let i = 0; i < historyRows.length; i++) {
+    for (let j = i+1; j < historyRows.length; j++) {
+      const a = historyRows[i], b = historyRows[j];
+      const betragA = a.einnahme || a.ausgabe;
+      const betragB = b.einnahme || b.ausgabe;
+      const betragGleich = Math.abs(betragA - betragB) < 0.01 && betragA > 0;
+      const datumGleich = a.redatum && b.redatum && a.redatum === b.redatum;
+      const textAehnlich = a.text && b.text && (
+        a.text.toLowerCase().substring(0,20) === b.text.toLowerCase().substring(0,20)
+      );
+
+      if (betragGleich && datumGleich && textAehnlich) {
+        // Sicheres Duplikat
+        if (!a.dupState) { a.dupState = 'original'; }
+        b.dupState = 'duplicate';
+        sichereDups++;
+      } else if (betragGleich && datumGleich) {
+        // Mögliches Duplikat
+        if (!a.dupState) { a.dupState = 'original'; }
+        if (!b.dupState) { b.dupState = 'possible'; }
+        moeglicheDups++;
+      }
+    }
+  }
+
+  renderHistory();
+  const sum = document.getElementById('dup-summary');
+  sum.style.display = '';
+  if (sichereDups === 0 && moeglicheDups === 0) {
+    sum.innerHTML = '<div class="status success">✓ Keine Duplikate gefunden!</div>';
+  } else {
+    sum.innerHTML = `<div class="status warn">
+      🔍 ${sichereDups} sichere Duplikate (🔴 rot) und ${moeglicheDups} mögliche (🟡 gelb) gefunden.
+      Rote Einträge bitte im Sheet löschen.
+    </div>`;
+  }
+}
+
+function exportCSV() {
+  if (!historyRows.length) return;
+  // Only export non-duplicates
+  const clean = historyRows.filter(r => r.dupState !== 'duplicate');
+  const rows = clean.map(r => [
+    r.nr, '', '', r.datum, r.bart, '', r.text, r.redatum,
+    r.einnahme > 0 ? r.einnahme.toFixed(2).replace('.',',') : '',
+    r.ausgabe  > 0 ? r.ausgabe.toFixed(2).replace('.',',')  : '',
+    r.ust, '', r.konto
+  ]);
+  const bom = '\uFEFF';
+  const csv = bom + rows.map(r => r.map(c => '"'+String(c||'').replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'buchaltung_export_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+  showStatus('history-status', '✓ CSV exportiert ('+clean.length+' Einträge, Duplikate ausgeschlossen)', 'success', 4000);
 }
 
 // ── SETTINGS ──
