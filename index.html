@@ -992,7 +992,7 @@ let historyRows = []; // cached sheet data
 // Parse Austrian/German number format: 1.500,00 → 1500.00
 function parseDE(s) {
   if (!s) return 0;
-  const clean = String(s).replace(/\./g,'').replace(',','.');
+  const clean = String(s).split('.').join('').replace(',','.');
   return parseFloat(clean) || 0;
 }
 
