@@ -1359,9 +1359,7 @@ function matchSupplier(rawText) {
 // Parse entire CSV file
 function parseCsvFile(text, filename) {
   const bank = detectBank(filename, text.substring(0, 200));
-  const lines = text.split(/
-?
-/).filter(l => l.trim());
+  const lines = text.split('\n').filter(l => l.trim());
   const rows = [];
   for (const line of lines) {
     const cols = line.split(';').map(c => c.trim().replace(/^"|"$/g, ''));
@@ -1661,7 +1659,7 @@ const KNOWN_VENDORS = [
   {match:'ACTIONPAINTING',text:'Actionpainting Einnahme',konto:'420',ust:'20',typ:'ein'},
 ];
 
-let csvRows = [];
+csvRows = [];
 let csvBank = '';
 let csvFile = null;
 
@@ -1733,9 +1731,7 @@ async function parseCSV(file) {
     } catch(e) {}
   }
 
-  const lines = text.split(/
-?
-/).filter(l=>l.trim());
+  const lines = text.split('\n').filter(l=>l.trim());
   if(!lines.length) { showStatus('import-status','⚠ Keine Daten gefunden','err'); return; }
 
   // Parse rows - detect if Raiffeisen (col0=date) or BAWAG/easybank (col0=IBAN)
