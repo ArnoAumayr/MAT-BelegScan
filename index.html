@@ -1271,27 +1271,26 @@ window.addEventListener('load', () => {
 // ── KONTO-IMPORT ──────────────────────────────────────────
 
 const KNOWN_SUPPLIERS = [
-  // Format: { match, text, konto, ust }
-  { match: /google/i,          text: 'Google - Werbung',           konto: '765', ust: '20' },
-  { match: /stripe/i,          text: 'Stripe - Zahlungseingang',   konto: '420', ust: '20', einnahme: true },
-  { match: /sumup/i,           text: 'SumUp - Zahlungseingang',    konto: '420', ust: '20', einnahme: true },
-  { match: /paypal/i,          text: 'PayPal',                     konto: '790', ust: '20' },
-  { match: /amazon/i,          text: 'Amazon - Einkauf',           konto: '760', ust: '20' },
-  { match: /audible/i,         text: 'Audible - Abo',              konto: '760', ust: '20' },
+  { match: /google/i,           text: 'Google - Werbung',            konto: '765', ust: '20' },
+  { match: /stripe/i,           text: 'Stripe - Zahlungseingang',    konto: '420', ust: '20', einnahme: true },
+  { match: /sumup/i,            text: 'SumUp - Zahlungseingang',     konto: '420', ust: '20', einnahme: true },
+  { match: /paypal/i,           text: 'PayPal',                      konto: '790', ust: '20' },
+  { match: /amazon/i,           text: 'Amazon - Einkauf',            konto: '760', ust: '20' },
+  { match: /audible/i,          text: 'Audible - Abo',               konto: '760', ust: '20' },
   { match: /billa|spar|hofer|merkur|lidl|aldi/i, text: 'Lebensmittel', konto: '725', ust: '10' },
-  { match: /bauhaus|obi|hornbach/i, text: 'Baumaterial',           konto: '725', ust: '20' },
-  { match: /a1|magenta|drei |3 gmbh|telekom/i, text: 'Telekommunikation', konto: '739', ust: '20' },
-  { match: /versicherung|insurance/i, text: 'Versicherung',        konto: '770', ust: '0'  },
-  { match: /steuer|finanzamt/i, text: 'Steuer/Abgaben',            konto: '710', ust: '0'  },
-  { match: /sozialversicherung|sva|svs/i, text: 'SVA Pflichtversicherung', konto: '771', ust: '0' },
-  { match: /miete|miet|leasing/i, text: 'Miete/Leasing',          konto: '740', ust: '20' },
-  { match: /strom|gas |energie|wien energie/i, text: 'Energie',    konto: '725', ust: '20' },
-  { match: /bank|spesen|gebühr|kontoführ/i, text: 'Bankspesen',    konto: '780', ust: '0'  },
-  { match: /zins/i,            text: 'Zinsen',                     konto: '830', ust: '0'  },
-  { match: /kickstarter/i,     text: 'Kickstarter',                konto: '765', ust: '20' },
-  { match: /world4you|hosting|domain|netcup/i, text: 'Hosting/Domain', konto: '748', ust: '20' },
-  { match: /adobe/i,           text: 'Adobe - Software',           konto: '748', ust: '20' },
-  { match: /microsoft|office 365/i, text: 'Microsoft - Software',  konto: '748', ust: '20' },
+  { match: /bauhaus|obi|hornbach/i, text: 'Baumaterial',             konto: '725', ust: '20' },
+  { match: /magenta|telekom|drei|mobilkom/i, text: 'Telekommunikation', konto: '739', ust: '20' },
+  { match: /versicherung|insurance/i, text: 'Versicherung',          konto: '770', ust: '0'  },
+  { match: /finanzamt|steuer/i, text: 'Steuer/Abgaben',              konto: '710', ust: '0'  },
+  { match: /sozialversicherung|svs|sva/i, text: 'SVA Pflichtversicherung', konto: '771', ust: '0' },
+  { match: /leasing|miete/i,    text: 'Miete/Leasing',               konto: '740', ust: '20' },
+  { match: /strom|energie/i,    text: 'Energie',                     konto: '725', ust: '20' },
+  { match: /bankspesen|kontogebuehr|spesen/i, text: 'Bankspesen',    konto: '780', ust: '0'  },
+  { match: /zinsen|zinsabschluss/i, text: 'Zinsen',                  konto: '830', ust: '0'  },
+  { match: /kickstarter/i,      text: 'Kickstarter',                 konto: '765', ust: '20' },
+  { match: /world4you|netcup|hosting|domain/i, text: 'Hosting/Domain', konto: '748', ust: '20' },
+  { match: /adobe/i,            text: 'Adobe - Software',            konto: '748', ust: '20' },
+  { match: /microsoft/i,        text: 'Microsoft - Software',        konto: '748', ust: '20' },
 ];
 
 let csvRows = [];
@@ -1337,7 +1336,13 @@ function extractSupplier(rawText) {
   // Remove technical parts after | 
   let t = rawText.split('|')[0].trim();
   // Remove common prefixes
-  t = t.replace(/^(Gutschrift SEPA-Zahlung \(EU-Rau\s*|George-Transfer\s*|Auftraggeber:\s*|Verwendungszweck:\s*|Empfänger:\s*|Abbuchung Onlinebanking\s*|Bezahlung Karte\s*|Auszahlung Karte\s*|Dauerspende.*?Nr\.\s*\d+\s*)/i, '');
+  // Remove common Austrian bank text prefixes
+  const prefixes = ['Gutschrift SEPA-Zahlung','George-Transfer','Auftraggeber:',
+    'Verwendungszweck:','Empfänger:','Abbuchung Onlinebanking',
+    'Bezahlung Karte','Auszahlung Karte','Dauerspende'];
+  for (const p of prefixes) {
+    if (t.toLowerCase().startsWith(p.toLowerCase())) { t = t.slice(p.length).trim(); break; }
+  }
   // Trim to first meaningful part
   t = t.replace(/\s{2,}/g, ' ').trim().substring(0, 60);
   return t || rawText.substring(0, 40);
