@@ -319,6 +319,28 @@ body {
 .toggle-btn { flex: 1; padding: 6px 10px; font-family: var(--font-mono); font-size: 12px; border: none; background: transparent; color: var(--text3); cursor: pointer; transition: all .15s; }
 .toggle-btn.active-ein { background: var(--green-bg); color: var(--green); }
 .toggle-btn.active-aus { background: var(--red-bg); color: var(--red); }
+
+/* IMPORT */
+.csv-row { background:var(--bg2); border:0.5px solid var(--border); border-radius:var(--radius); padding:.75rem 1rem; margin-bottom:.5rem; }
+.csv-row.skip { opacity:.4; }
+.csv-row.dup  { border-color:var(--yellow); }
+.csv-row.saved { border-color:var(--green); opacity:.6; }
+.csv-row-top  { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:.6rem; }
+.csv-date     { font-size:11px; color:var(--text3); white-space:nowrap; min-width:80px; }
+.csv-text     { flex:1; font-size:12px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.csv-betrag   { font-size:13px; font-weight:500; white-space:nowrap; }
+.csv-betrag.ein { color:var(--green); }
+.csv-betrag.aus { color:var(--red); }
+.csv-fields   { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:6px; }
+.csv-field    { display:flex; flex-direction:column; gap:2px; }
+.csv-field label { font-size:10px; color:var(--text3); letter-spacing:.06em; text-transform:uppercase; }
+.csv-field select, .csv-field input { font-size:12px; padding:5px 7px; border:0.5px solid var(--border2); border-radius:var(--radius-sm); background:var(--bg3); color:var(--text); font-family:var(--font-mono); width:100%; }
+.csv-field select:focus, .csv-field input:focus { outline:none; border-color:var(--accent2); }
+.import-log-item { font-size:11px; color:var(--text2); padding:4px 10px; border-radius:var(--radius-sm); background:var(--bg2); margin-bottom:3px; display:flex; gap:10px; border:0.5px solid var(--border); }
+.bank-badge { font-size:10px; padding:2px 8px; border-radius:10px; font-weight:500; white-space:nowrap; }
+.bank-raiffeisen { background:#3d1500; color:#ffb090; }
+.bank-bawag      { background:#001540; color:#90b0ff; }
+.bank-easybank   { background:#003010; color:#90ffb0; }
 </style>
 </head>
 <body>
@@ -355,6 +377,7 @@ body {
 
   <div class="tabs">
     <div class="tab active" onclick="showTab('scan')">📷 Scannen</div>
+    <div class="tab" onclick="showTab('import')">🏦 Konto-Import</div>
     <div class="tab" onclick="showTab('history')">📋 Verlauf</div>
     <div class="tab" onclick="showTab('settings')">⚙️ Setup</div>
   </div>
@@ -386,7 +409,35 @@ body {
       </div>
     </div>
 
-    <!-- HISTORY PANEL -->
+    <!-- IMPORT PANEL -->
+    <div id="panel-import" class="panel">
+      <div id="import-status"></div>
+
+      <div class="upload-zone" id="csv-drop" onclick="document.getElementById('csv-input').click()">
+        <span class="upload-icon">🏦</span>
+        <div class="upload-title">Kontoauszug importieren</div>
+        <div class="upload-sub">CSV-Datei von Raiffeisen, BAWAG oder easybank<br>Datei hierher ziehen oder klicken</div>
+      </div>
+      <input type="file" id="csv-input" accept=".csv" style="display:none">
+
+      <div id="import-log-section" style="display:none" class="section">
+        <div class="section-label">📋 Import-Log</div>
+        <div id="import-log-list"></div>
+      </div>
+
+      <div id="csv-preview" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:.75rem;flex-wrap:wrap">
+          <div style="flex:1">
+            <div id="csv-summary" style="font-size:13px;font-weight:500"></div>
+            <div id="csv-meta" style="font-size:11px;color:var(--text3);margin-top:2px"></div>
+          </div>
+          <button class="btn-primary" id="btn-import-all" onclick="importAllToSheet()">💾 Alle ins Sheet</button>
+        </div>
+        <div id="csv-rows"></div>
+      </div>
+    </div>
+
+<!-- HISTORY PANEL -->
     <div id="panel-history" class="panel">
       <div id="history-status"></div>
       <div id="dup-summary" style="display:none"></div>
@@ -575,9 +626,10 @@ function logout() {
 
 // ── TABS ──
 function showTab(tab) {
-  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['scan','history','settings'][i]===tab));
+  document.querySelectorAll('.tab').forEach((t,i) => t.classList.toggle('active', ['scan','import','history','settings'][i]===tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+tab).classList.add('active');
+  if(tab==='import') loadImportLog();
 }
 
 // ── FILE HANDLING ──
@@ -1213,7 +1265,700 @@ function showStatus(containerId, msg, type, autohide) {
 window.addEventListener('load', () => {
   const savedKey = getSetting('apikey','');
   if (savedKey) document.getElementById('api-key-input').value = savedKey;
+  loadImportLog();
 });
+
+// ── KONTO-IMPORT ──────────────────────────────────────────
+
+const KNOWN_SUPPLIERS = [
+  // Format: { match, text, konto, ust }
+  { match: /google/i,          text: 'Google - Werbung',           konto: '765', ust: '20' },
+  { match: /stripe/i,          text: 'Stripe - Zahlungseingang',   konto: '420', ust: '20', einnahme: true },
+  { match: /sumup/i,           text: 'SumUp - Zahlungseingang',    konto: '420', ust: '20', einnahme: true },
+  { match: /paypal/i,          text: 'PayPal',                     konto: '790', ust: '20' },
+  { match: /amazon/i,          text: 'Amazon - Einkauf',           konto: '760', ust: '20' },
+  { match: /audible/i,         text: 'Audible - Abo',              konto: '760', ust: '20' },
+  { match: /billa|spar|hofer|merkur|lidl|aldi/i, text: 'Lebensmittel', konto: '725', ust: '10' },
+  { match: /bauhaus|obi|hornbach/i, text: 'Baumaterial',           konto: '725', ust: '20' },
+  { match: /a1|magenta|drei |3 gmbh|telekom/i, text: 'Telekommunikation', konto: '739', ust: '20' },
+  { match: /versicherung|insurance/i, text: 'Versicherung',        konto: '770', ust: '0'  },
+  { match: /steuer|finanzamt/i, text: 'Steuer/Abgaben',            konto: '710', ust: '0'  },
+  { match: /sozialversicherung|sva|svs/i, text: 'SVA Pflichtversicherung', konto: '771', ust: '0' },
+  { match: /miete|miet|leasing/i, text: 'Miete/Leasing',          konto: '740', ust: '20' },
+  { match: /strom|gas |energie|wien energie/i, text: 'Energie',    konto: '725', ust: '20' },
+  { match: /bank|spesen|gebühr|kontoführ/i, text: 'Bankspesen',    konto: '780', ust: '0'  },
+  { match: /zins/i,            text: 'Zinsen',                     konto: '830', ust: '0'  },
+  { match: /kickstarter/i,     text: 'Kickstarter',                konto: '765', ust: '20' },
+  { match: /world4you|hosting|domain|netcup/i, text: 'Hosting/Domain', konto: '748', ust: '20' },
+  { match: /adobe/i,           text: 'Adobe - Software',           konto: '748', ust: '20' },
+  { match: /microsoft|office 365/i, text: 'Microsoft - Software',  konto: '748', ust: '20' },
+];
+
+let csvRows = [];
+let importLog = JSON.parse(localStorage.getItem('belegscan_importlog') || '[]');
+
+// Detect bank from filename or content
+function detectBank(filename, firstLine) {
+  const fn = filename.toLowerCase();
+  if (fn.includes('elba') || fn.includes('raiffeisen')) return 'Raiffeisen';
+  if (fn.includes('bawag')) return 'BAWAG';
+  if (fn.includes('easybank')) return 'easybank';
+  // Detect from IBAN in content
+  if (firstLine.includes('AT49328')) return 'Raiffeisen';
+  if (firstLine.includes('AT766')) return 'BAWAG';
+  if (firstLine.includes('AT971')) return 'easybank';
+  return 'Unbekannt';
+}
+
+// Parse a single CSV line into { datum, text, betrag }
+function parseCsvLine(bank, cols) {
+  let datum, rawText, betrag;
+  if (bank === 'Raiffeisen') {
+    // Col: datum, text, wertstellung, betrag, währung, timestamp
+    datum   = cols[0]||'';
+    rawText = cols[1]||'';
+    betrag  = cols[3]||'';
+  } else {
+    // BAWAG + easybank: iban, text, buchungsdatum, wertstellung, betrag, währung
+    datum   = cols[2]||'';
+    rawText = cols[1]||'';
+    betrag  = cols[4]||'';
+  }
+  // Normalize date DD.MM.YYYY → YYYY-MM-DD
+  const dp = datum.trim().split('.');
+  const isoDate = dp.length===3 ? dp[2]+'-'+dp[1].padStart(2,'0')+'-'+dp[0].padStart(2,'0') : '';
+  // Normalize betrag
+  const betragNum = parseFloat(betrag.replace(/[+\s]/g,'').replace(',','.')) || 0;
+  return { datum: isoDate, rawText: rawText.trim(), betrag: betragNum };
+}
+
+// Extract clean supplier name from raw bank text
+function extractSupplier(rawText) {
+  // Remove technical parts after | 
+  let t = rawText.split('|')[0].trim();
+  // Remove common prefixes
+  t = t.replace(/^(Gutschrift SEPA-Zahlung \(EU-Rau\s*|George-Transfer\s*|Auftraggeber:\s*|Verwendungszweck:\s*|Empfänger:\s*|Abbuchung Onlinebanking\s*|Bezahlung Karte\s*|Auszahlung Karte\s*|Dauerspende.*?Nr\.\s*\d+\s*)/i, '');
+  // Trim to first meaningful part
+  t = t.replace(/\s{2,}/g, ' ').trim().substring(0, 60);
+  return t || rawText.substring(0, 40);
+}
+
+// Match against known suppliers
+function matchSupplier(rawText) {
+  for (const s of KNOWN_SUPPLIERS) {
+    if (s.match.test(rawText)) return s;
+  }
+  return null;
+}
+
+// Parse entire CSV file
+function parseCsvFile(text, filename) {
+  const bank = detectBank(filename, text.substring(0, 200));
+  const lines = text.split(/
+?
+/).filter(l => l.trim());
+  const rows = [];
+  for (const line of lines) {
+    const cols = line.split(';').map(c => c.trim().replace(/^"|"$/g, ''));
+    if (cols.length < 5) continue;
+    const { datum, rawText, betrag } = parseCsvLine(bank, cols);
+    if (!datum || betrag === 0) continue;
+    const supplier = extractSupplier(rawText);
+    const match = matchSupplier(rawText);
+    const einnahme = betrag > 0;
+    const absBetrag = Math.abs(betrag);
+    rows.push({
+      id: Date.now().toString(36) + Math.random().toString(36).slice(2,5),
+      bank, datum, rawText, supplier,
+      betrag: absBetrag,
+      einnahme: match?.einnahme !== undefined ? match.einnahme : einnahme,
+      text: match ? match.text : supplier,
+      konto: match?.konto || '',
+      ust: match?.ust || '20',
+      bart: 'B',
+      confidence: match ? 85 : 40,
+      skip: false,
+      saved: false,
+      isDup: false,
+    });
+  }
+  return { bank, rows };
+}
+
+// File input handler
+document.getElementById('csv-input').addEventListener('change', async function() {
+  const file = this.files[0];
+  if (!file) return;
+  this.value = '';
+  
+  showStatus('import-status', '<span class="spinner"></span> Datei wird gelesen...', 'info');
+  
+  // Try encodings
+  let text = '';
+  for (const enc of ['utf-8', 'windows-1250', 'latin-1']) {
+    try {
+      text = await file.text();
+      // Quick validation
+      if (text.includes(';')) break;
+    } catch(e) {}
+  }
+  
+  // Also try with FileReader for encoding issues
+  if (!text || !text.includes(';')) {
+    text = await new Promise(res => {
+      const r = new FileReader();
+      r.onload = e => res(e.target.result);
+      r.readAsText(file, 'windows-1250');
+    });
+  }
+  
+  const { bank, rows } = parseCsvFile(text, file.name);
+  
+  if (!rows.length) {
+    showStatus('import-status', '⚠ Keine Transaktionen gefunden.', 'err');
+    return;
+  }
+  
+  // Check duplicates against existing sheet data
+  await checkImportDups(rows);
+  
+  csvRows = rows;
+  const unknownCount = rows.filter(r => !r.konto).length;
+  const dupCount = rows.filter(r => r.isDup).length;
+  
+  document.getElementById('import-status').innerHTML = '';
+  document.getElementById('csv-summary').textContent = 
+    bank + ' · ' + rows.length + ' Transaktionen · ' + rows.filter(r=>r.einnahme).length + ' Einnahmen · ' + rows.filter(r=>!r.einnahme).length + ' Ausgaben';
+  document.getElementById('csv-meta').textContent = 
+    (unknownCount ? unknownCount + ' unbekannte Lieferanten · ' : '') + 
+    (dupCount ? dupCount + ' mögliche Duplikate · ' : '') +
+    'Zeitraum: ' + rows[rows.length-1].datum + ' bis ' + rows[0].datum;
+  
+  document.getElementById('csv-preview').style.display = '';
+  renderCsvRows();
+});
+
+// Drag & drop for CSV
+const csvDrop = document.getElementById('csv-drop');
+csvDrop.addEventListener('dragover', e => { e.preventDefault(); csvDrop.classList.add('drag'); });
+csvDrop.addEventListener('dragleave', () => csvDrop.classList.remove('drag'));
+csvDrop.addEventListener('drop', e => {
+  e.preventDefault(); csvDrop.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    const dt = new DataTransfer(); dt.items.add(file);
+    document.getElementById('csv-input').files = dt.files;
+    document.getElementById('csv-input').dispatchEvent(new Event('change'));
+  }
+});
+
+async function checkImportDups(rows) {
+  const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
+  const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
+  if (!sheetId || !accessToken) return;
+  try {
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!D1:K500')}?valueRenderOption=UNFORMATTED_VALUE`;
+    const r = await fetch(url, { headers: { Authorization: 'Bearer '+accessToken } });
+    const data = await r.json();
+    const existing = (data.values||[]).map(r => ({
+      datum: r[0]||'', betrag: parseDE(r[5])||parseDE(r[6])
+    }));
+    rows.forEach(row => {
+      const dup = existing.find(e => 
+        e.datum === row.datum && 
+        Math.abs(e.betrag - row.betrag) < 0.01
+      );
+      row.isDup = !!dup;
+    });
+  } catch(e) { console.log('Dup check failed:', e.message); }
+}
+
+function renderCsvRows() {
+  const accOpts = ACCOUNTS.map(a => `<option value="${a.nr}">${a.nr} – ${a.name}</option>`).join('');
+  document.getElementById('csv-rows').innerHTML = csvRows.map((r, idx) => {
+    const cls = r.saved ? 'saved' : r.isDup ? 'dup' : r.skip ? 'skip' : '';
+    return `<div class="csv-row ${cls}" id="crow-${idx}">
+      <div class="csv-row-top">
+        <span class="csv-date">${r.datum}</span>
+        <span class="bank-badge bank-${r.bank.toLowerCase()}">${r.bank}</span>
+        <span class="csv-text" title="${escHtml(r.rawText)}">${escHtml(r.supplier)}</span>
+        ${r.isDup ? '<span class="pill dup-warn" style="font-size:10px;padding:2px 6px;border-radius:10px;background:#3a2a00;color:#e8c87a">⚠ Duplikat?</span>' : ''}
+        ${r.saved ? '<span style="font-size:10px;color:var(--green)">✓ Gespeichert</span>' : ''}
+        <span class="csv-betrag ${r.einnahme?'ein':'aus'}">${r.einnahme?'+':'-'}${r.betrag.toFixed(2).replace('.',',')} €</span>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text3);cursor:pointer">
+          <input type="checkbox" ${r.skip?'checked':''} onchange="csvRows[${idx}].skip=this.checked;document.getElementById('crow-${idx}').className='csv-row '+(this.checked?'skip':'')"> Überspringen
+        </label>
+      </div>
+      <div class="csv-fields">
+        <div class="csv-field" style="grid-column:1/-1">
+          <label>Buchungstext</label>
+          <input type="text" value="${escHtml(r.text)}" onchange="csvRows[${idx}].text=this.value">
+        </div>
+        <div class="csv-field">
+          <label>B-Art</label>
+          <select onchange="csvRows[${idx}].bart=this.value">
+            <option value="B" ${r.bart==='B'?'selected':''}>B – Bank</option>
+            <option value="K" ${r.bart==='K'?'selected':''}>K – Kassa</option>
+          </select>
+        </div>
+        <div class="csv-field">
+          <label>Einnahme / Ausgabe</label>
+          <select onchange="csvRows[${idx}].einnahme=this.value==='ein'">
+            <option value="aus" ${!r.einnahme?'selected':''}>− Ausgabe</option>
+            <option value="ein" ${r.einnahme?'selected':''}>+ Einnahme</option>
+          </select>
+        </div>
+        <div class="csv-field">
+          <label>USt %</label>
+          <select onchange="csvRows[${idx}].ust=this.value">
+            ${['0','10','13','20'].map(u=>`<option value="${u}" ${u===r.ust?'selected':''}>${u}%</option>`).join('')}
+          </select>
+        </div>
+        <div class="csv-field">
+          <label>Konto</label>
+          <select onchange="csvRows[${idx}].konto=this.value">
+            <option value="">– wählen –</option>${accOpts.replace(`value="${r.konto}"`,`value="${r.konto}" selected`)}
+          </select>
+        </div>
+        ${r.confidence<70?'<div class="csv-field" style="grid-column:1/-1"><label style="color:var(--yellow)">⚠ Bitte Konto und Typ prüfen — unbekannter Lieferant</label></div>':''}
+      </div>
+      ${!r.saved?`<div style="margin-top:.5rem">
+        <button class="btn-sm primary" onclick="saveCsvRow(${idx})">💾 Speichern</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+
+async function saveCsvRow(idx) {
+  const r = csvRows[idx];
+  if (r.skip || r.saved) return;
+  
+  const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
+  const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
+  
+  try {
+    // Find next empty row
+    const getUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A:K')}`;
+    const getR = await fetch(getUrl, { headers: { Authorization: 'Bearer '+accessToken } });
+    const getData = await getR.json();
+    const allRows = getData.values || [];
+    let lastFilled = 0;
+    allRows.forEach((row, i) => { if (row.some(c=>c!==''&&c!==undefined)) lastFilled = i+1; });
+    const nextRow = lastFilled + 1;
+    
+    const einnahme = r.einnahme ? r.betrag : 0;
+    const ausgabe  = r.einnahme ? 0 : r.betrag;
+    const netto    = parseFloat(r.ust) > 0 ? (r.betrag/(1+parseFloat(r.ust)/100)) : r.betrag;
+    
+    const fullRow = [
+      '',           // A
+      '',           // B  
+      '',           // C
+      r.datum,      // D - Datum (ISO → Sheets interprets correctly)
+      r.bart||'B',  // E - B/K
+      '',           // F
+      r.text||'',   // G - Text
+      '',           // H
+      einnahme > 0 ? einnahme : '',  // I
+      ausgabe  > 0 ? ausgabe  : '',  // J
+      r.ust||'20',  // K
+      '',           // L
+      r.konto||'',  // M
+    ];
+    
+    const writeUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':M'+nextRow)}?valueInputOption=RAW`;
+    const wr = await fetch(writeUrl, {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer '+accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ values: [fullRow] })
+    });
+    if (!wr.ok) { const e=await wr.json(); throw new Error(e.error?.message); }
+    
+    csvRows[idx].saved = true;
+    renderCsvRows();
+  } catch(e) {
+    showStatus('import-status', '⚠ Fehler: '+e.message, 'err');
+  }
+}
+
+async function importAllToSheet() {
+  const toSave = csvRows.filter(r => !r.skip && !r.saved);
+  if (!toSave.length) { showStatus('import-status', '⚠ Keine Einträge zum Speichern.', 'warn'); return; }
+  
+  document.getElementById('btn-import-all').disabled = true;
+  showStatus('import-status', '<span class="spinner"></span> Werden gespeichert...', 'info');
+  
+  let count = 0;
+  for (let i = 0; i < csvRows.length; i++) {
+    if (!csvRows[i].skip && !csvRows[i].saved) {
+      await saveCsvRow(i);
+      count++;
+    }
+  }
+  
+  // Save to import log
+  const bank = csvRows[0]?.bank || 'Unbekannt';
+  const dates = csvRows.map(r=>r.datum).filter(Boolean).sort();
+  const logEntry = {
+    ts: new Date().toISOString().slice(0,16).replace('T',' '),
+    bank, count,
+    von: dates[0]||'', bis: dates[dates.length-1]||''
+  };
+  importLog.unshift(logEntry);
+  if (importLog.length > 50) importLog.pop();
+  localStorage.setItem('belegscan_importlog', JSON.stringify(importLog));
+  
+  document.getElementById('btn-import-all').disabled = false;
+  showStatus('import-status', '✓ '+count+' Einträge gespeichert!', 'success', 4000);
+  loadImportLog();
+}
+
+function loadImportLog() {
+  const log = JSON.parse(localStorage.getItem('belegscan_importlog') || '[]');
+  const sec = document.getElementById('import-log-section');
+  const list = document.getElementById('import-log-list');
+  if (!log.length) { sec.style.display='none'; return; }
+  sec.style.display = '';
+  list.innerHTML = log.map(e => `
+    <div class="import-log-item">
+      <span style="color:var(--text3)">${e.ts}</span>
+      <span class="bank-badge bank-${e.bank.toLowerCase()}">${e.bank}</span>
+      <span>${e.count} Einträge</span>
+      <span style="color:var(--text3)">${e.von} – ${e.bis}</span>
+    </div>`).join('');
+}
+
+// ── KONTO IMPORT ──
+
+const KNOWN_VENDORS = [
+  {match:'GOOGLE',       text:'Google',              konto:'765', ust:'20', typ:'aus'},
+  {match:'FACEBOOK',     text:'Meta/Facebook',        konto:'765', ust:'20', typ:'aus'},
+  {match:'STRIPE',       text:'Stripe Zahlungseingang',konto:'420',ust:'20', typ:'ein'},
+  {match:'SUMUP',        text:'SumUp Zahlungseingang', konto:'420',ust:'20', typ:'ein'},
+  {match:'PAYPAL',       text:'PayPal',               konto:'790', ust:'20', typ:'aus'},
+  {match:'AMAZON',       text:'Amazon',               konto:'760', ust:'20', typ:'aus'},
+  {match:'AMZN',         text:'Amazon',               konto:'760', ust:'20', typ:'aus'},
+  {match:'MICROSOFT',    text:'Microsoft',            konto:'748', ust:'20', typ:'aus'},
+  {match:'ADOBE',        text:'Adobe',                konto:'748', ust:'20', typ:'aus'},
+  {match:'BILLA',        text:'Billa (Bürobedarf)',   konto:'725', ust:'10', typ:'aus'},
+  {match:'HOFER',        text:'Hofer',                konto:'725', ust:'10', typ:'aus'},
+  {match:'POST',         text:'Post AG',              konto:'730', ust:'20', typ:'aus'},
+  {match:'TELEKOM',      text:'Telekom',              konto:'739', ust:'20', typ:'aus'},
+  {match:'A1',           text:'A1 Telekom',           konto:'739', ust:'20', typ:'aus'},
+  {match:'DREI',         text:'Drei',                 konto:'739', ust:'20', typ:'aus'},
+  {match:'MAGENTA',      text:'Magenta',              konto:'739', ust:'20', typ:'aus'},
+  {match:'SVA',          text:'SVA Pflichtversicherung',konto:'771',ust:'0', typ:'aus'},
+  {match:'SOZIALVERSICHERUNG',text:'SVA',             konto:'771', ust:'0', typ:'aus'},
+  {match:'FINANZAMT',    text:'Finanzamt',            konto:'710', ust:'0', typ:'aus'},
+  {match:'NETFLIX',      text:'Netflix',              konto:'790', ust:'20', typ:'aus'},
+  {match:'SPOTIFY',      text:'Spotify',              konto:'790', ust:'20', typ:'aus'},
+  {match:'MAKE A TEAM',  text:'MAKE A TEAM Einnahme', konto:'420', ust:'20', typ:'ein'},
+  {match:'ACTIONPAINTING',text:'Actionpainting Einnahme',konto:'420',ust:'20',typ:'ein'},
+];
+
+let csvRows = [];
+let csvBank = '';
+let csvFile = null;
+
+// Setup CSV drag & drop
+document.getElementById('csv-drop').addEventListener('dragover', e=>{e.preventDefault();document.getElementById('csv-drop').classList.add('drag');});
+document.getElementById('csv-drop').addEventListener('dragleave', ()=>document.getElementById('csv-drop').classList.remove('drag'));
+document.getElementById('csv-drop').addEventListener('drop', e=>{e.preventDefault();document.getElementById('csv-drop').classList.remove('drag');if(e.dataTransfer.files[0]) parseCSV(e.dataTransfer.files[0]);});
+document.getElementById('csv-input').addEventListener('change', function(){if(this.files[0]) parseCSV(this.files[0]); this.value='';});
+
+function detectBank(filename, iban) {
+  const fn = filename.toLowerCase();
+  if(fn.includes('bawag') || iban.startsWith('AT76600') || iban.startsWith('AT7660')) return 'BAWAG';
+  if(fn.includes('elba') || fn.includes('raiffeisen') || iban.startsWith('AT4932')) return 'Raiffeisen';
+  if(fn.includes('easybank') || iban.startsWith('AT9714')) return 'easybank';
+  return 'Unbekannt';
+}
+
+function parseAmount(s) {
+  if(!s) return 0;
+  return parseFloat(String(s).replace(/\./g,'').replace(',','.')) || 0;
+}
+
+function parseATDate(s) {
+  if(!s) return '';
+  const clean = String(s).trim();
+  if(clean.includes('.')) {
+    const parts = clean.split('.');
+    if(parts.length >= 3) {
+      const d = parts[0].padStart(2,'0');
+      const m = parts[1].padStart(2,'0');
+      const y = parts[2].substring(0,4);
+      return y+'-'+m+'-'+d;
+    }
+  }
+  return clean;
+}
+
+function matchVendor(text) {
+  const upper = String(text||'').toUpperCase();
+  for(const v of KNOWN_VENDORS) {
+    if(upper.includes(v.match)) return v;
+  }
+  return null;
+}
+
+function extractCounterpart(text) {
+  // Try to extract name after last | pipe
+  const parts = String(text||'').split('|');
+  if(parts.length > 1) {
+    const last = parts[parts.length-1].trim();
+    if(last.length > 3 && last.length < 60) return last;
+  }
+  // Fallback: first 40 chars
+  return String(text||'').substring(0,40).trim();
+}
+
+async function parseCSV(file) {
+  csvFile = file;
+  showStatus('import-status', '<span class="spinner"></span> Wird analysiert...', 'info');
+  document.getElementById('csv-preview').style.display='none';
+
+  const buffer = await file.arrayBuffer();
+  // Try encodings
+  let text = '';
+  for(const enc of ['utf-8', 'windows-1250', 'iso-8859-1']) {
+    try {
+      text = new TextDecoder(enc).decode(buffer);
+      if(!text.includes(' ')) break;
+    } catch(e) {}
+  }
+
+  const lines = text.split(/
+?
+/).filter(l=>l.trim());
+  if(!lines.length) { showStatus('import-status','⚠ Keine Daten gefunden','err'); return; }
+
+  // Parse rows - detect if Raiffeisen (col0=date) or BAWAG/easybank (col0=IBAN)
+  const firstCols = lines[0].split(';');
+  const isRaiffeisen = firstCols[0].trim().match(/^\d{2}\.\d{2}\.\d{4}$/);
+  const iban = isRaiffeisen ? '' : firstCols[0].trim();
+  csvBank = detectBank(file.name, iban);
+
+  csvRows = [];
+  for(const line of lines) {
+    const cols = line.split(';').map(c=>c.trim().replace(/^"|"$/g,''));
+    let datum, buchungstext, betragStr, wertDatum;
+
+    if(isRaiffeisen) {
+      // Raiffeisen: datum;text;wertdatum;betrag;waehrung;timestamp
+      datum = parseATDate(cols[0]);
+      buchungstext = cols[1]||'';
+      wertDatum = parseATDate(cols[2]);
+      betragStr = cols[3];
+    } else {
+      // BAWAG/easybank: iban;text;buchungsdatum;wertdatum;betrag;waehrung
+      datum = parseATDate(cols[2]);
+      buchungstext = cols[1]||'';
+      wertDatum = parseATDate(cols[3]);
+      betragStr = cols[4];
+    }
+
+    const betrag = parseAmount(betragStr);
+    if(!datum || betrag===0) continue;
+
+    const vendor = matchVendor(buchungstext);
+    const counterpart = extractCounterpart(buchungstext);
+    const einnahme = betrag > 0;
+
+    csvRows.push({
+      datum,
+      wertDatum,
+      buchungstext,
+      betrag: Math.abs(betrag),
+      einnahme: einnahme,
+      text: vendor ? vendor.text : counterpart,
+      konto: vendor ? vendor.konto : '',
+      ust: vendor ? vendor.ust : (einnahme?'20':'20'),
+      bart: 'B',
+      konfidenz: vendor ? 90 : 40,
+      skip: false,
+      saved: false,
+      bank: csvBank
+    });
+  }
+
+  if(!csvRows.length) { showStatus('import-status','⚠ Keine gültigen Transaktionen gefunden','err'); return; }
+
+  // Date range
+  const dates = csvRows.map(r=>r.datum).sort();
+  const von = toDE(dates[0]), bis = toDE(dates[dates.length-1]);
+  const ein = csvRows.filter(r=>r.einnahme).reduce((s,r)=>s+r.betrag,0);
+  const aus = csvRows.filter(r=>!r.einnahme).reduce((s,r)=>s+r.betrag,0);
+
+  document.getElementById('csv-summary').textContent = csvBank+' · '+csvRows.length+' Transaktionen · '+von+' bis '+bis;
+  document.getElementById('csv-meta').innerHTML = 
+    '<span style="color:var(--green)">+'+fmtDE(ein)+' €</span> Einnahmen · '+
+    '<span style="color:var(--red)">-'+fmtDE(aus)+' €</span> Ausgaben';
+  document.getElementById('import-status').innerHTML='';
+  document.getElementById('csv-preview').style.display='';
+  renderCSVRows();
+}
+
+function fmtDE(n) {
+  return Number(n).toLocaleString('de-AT',{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+
+function toDE(dateStr) {
+  if(!dateStr) return '';
+  const [y,m,d] = dateStr.split('-');
+  return d&&m&&y ? d+'.'+m+'.'+y : dateStr;
+}
+
+function renderCSVRows() {
+  const accOpts = ACCOUNTS.map(a=>`<option value="${a.nr}">${a.nr} – ${esc(a.name)}</option>`).join('');
+  const list = document.getElementById('csv-rows');
+
+  list.innerHTML = csvRows.map((r,i) => {
+    if(r.skip) return `<div class="beleg-card" style="opacity:.4">
+      <div class="beleg-header">
+        <div class="beleg-info"><div class="beleg-name" style="text-decoration:line-through">${esc(r.text)}</div></div>
+        <span class="pill" style="background:var(--bg3);color:var(--text3)">Übersprungen</span>
+        <button class="btn-sm" onclick="csvRows[${i}].skip=false;renderCSVRows()">↩ Wiederherstellen</button>
+      </div>
+    </div>`;
+
+    const konfClass = r.konfidenz>=80 ? 'pill saved' : r.konfidenz>=50 ? 'pill dup-warn' : 'pill dup';
+    const konfLabel = r.konfidenz>=80 ? '✓ Auto' : r.konfidenz>=50 ? '? Prüfen' : '! Manuell';
+
+    return `<div class="beleg-card ${r.saved?'':''}">
+      <div class="beleg-header">
+        <div class="beleg-info">
+          <div class="beleg-name">${esc(r.text)}</div>
+          <div style="font-size:11px;color:var(--text3)">${toDE(r.datum)} · ${esc(r.buchungstext.substring(0,60))}${r.buchungstext.length>60?'…':''}</div>
+        </div>
+        <span class="${konfClass}">${konfLabel}</span>
+        <span class="pill ${r.einnahme?'ein':'aus'}">${r.einnahme?'+':'-'}${fmtDE(r.betrag)} €</span>
+        ${r.saved?'<span class="pill saved">✓</span>':''}
+      </div>
+      <div class="beleg-fields">
+        <div class="field-grid">
+          <div class="field"><label>Datum</label><input type="date" value="${esc(r.datum)}" onchange="csvRows[${i}].datum=this.value"></div>
+          <div class="field"><label>B/K</label><select onchange="csvRows[${i}].bart=this.value">
+            <option value="B" ${r.bart==='B'?'selected':''}>B – Bank</option>
+            <option value="K" ${r.bart==='K'?'selected':''}>K – Kassa</option>
+          </select></div>
+          <div class="field"><label>Einnahme/Ausgabe</label>
+            <div class="toggle-wrap">
+              <button class="toggle-btn ${!r.einnahme?'active-aus':''}" onclick="csvRows[${i}].einnahme=false;renderCSVRows()">− Ausgabe</button>
+              <button class="toggle-btn ${r.einnahme?'active-ein':''}" onclick="csvRows[${i}].einnahme=true;renderCSVRows()">+ Einnahme</button>
+            </div>
+          </div>
+          <div class="field"><label>${r.einnahme?'Einnahme':'Ausgabe'} €</label>
+            <input type="number" step="0.01" value="${r.betrag.toFixed(2)}" onchange="csvRows[${i}].betrag=parseFloat(this.value)||0">
+          </div>
+          <div class="field full-width"><label>Text / Buchungstext</label>
+            <input type="text" value="${esc(r.text)}" onchange="csvRows[${i}].text=this.value">
+          </div>
+          <div class="field"><label>USt %</label><select onchange="csvRows[${i}].ust=this.value">
+            ${['0','10','13','20'].map(u=>`<option value="${u}" ${u===r.ust?'selected':''}>${u}%</option>`).join('')}
+          </select></div>
+          <div class="field full-width"><label>Konto</label><select onchange="csvRows[${i}].konto=this.value">
+            <option value="">– wählen –</option>${accOpts}
+          </select></div>
+        </div>
+      </div>
+      <div class="beleg-actions">
+        ${!r.saved?`<button class="btn-sm primary" onclick="importRow(${i})">💾 Speichern</button>`:''}
+        <button class="btn-sm danger" onclick="csvRows[${i}].skip=true;renderCSVRows()">Überspringen</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function importRow(i) {
+  const r = csvRows[i];
+  if(!accessToken) { alert('Bitte neu einloggen'); return; }
+
+  const sheetId = getSetting('sheetId', DEFAULT_SHEET_ID);
+  const sheetName = getSetting('sheetName', DEFAULT_SHEET_NAME);
+
+  // Find next row
+  const getR = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A:K')}`,
+    {headers:{'Authorization':'Bearer '+accessToken}}
+  );
+  const getData = await getR.json();
+  const allRows = getData.values||[];
+  let lastFilled = 0;
+  allRows.forEach((row,idx)=>{if(row.some(c=>c!==''&&c!==undefined)) lastFilled=idx+1;});
+  const nextRow = lastFilled+1;
+
+  const einnahme = r.einnahme ? r.betrag : 0;
+  const ausgabe = r.einnahme ? 0 : r.betrag;
+  const ust = parseFloat(r.ust||0)/100;
+  const netto = ust>0 ? (r.betrag/(1+ust)) : r.betrag;
+
+  const fullRow = [
+    '',           // A
+    '',           // B
+    '',           // C
+    '',           // D - Zahlungsdatum leer (Bank = Buchungsdatum ist fix)
+    r.bart||'B',  // E
+    '',           // F
+    r.text||'',   // G
+    toDE(r.datum),// H - Re-Datum = Buchungsdatum
+    einnahme>0 ? einnahme : '', // I
+    ausgabe>0 ? ausgabe : '',   // J
+    r.ust||'20',  // K
+    '',           // L
+    r.konto||'',  // M
+  ];
+
+  const writeR = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(sheetName+'!A'+nextRow+':M'+nextRow)}?valueInputOption=RAW`,
+    {method:'PUT', headers:{'Authorization':'Bearer '+accessToken,'Content-Type':'application/json'},
+     body:JSON.stringify({values:[fullRow]})}
+  );
+  if(!writeR.ok) { const e=await writeR.json(); alert('Fehler: '+e.error?.message); return; }
+
+  csvRows[i].saved = true;
+  renderCSVRows();
+  updateImportLog(r.bank, r.datum);
+}
+
+async function importAllToSheet() {
+  const unsaved = csvRows.filter(r=>!r.saved&&!r.skip);
+  document.getElementById('btn-import-all').disabled=true;
+  for(let i=0;i<csvRows.length;i++) {
+    if(!csvRows[i].saved&&!csvRows[i].skip) await importRow(i);
+  }
+  document.getElementById('btn-import-all').disabled=false;
+  showStatus('import-status','✓ Alle Zeilen importiert!','success',3000);
+  saveImportLog(csvBank, csvRows.filter(r=>!r.skip).map(r=>r.datum).sort());
+}
+
+// Import Log
+function getImportLog() {
+  try { return JSON.parse(localStorage.getItem('belegscan_importlog')||'[]'); } catch(e) { return []; }
+}
+function saveImportLog(bank, dates) {
+  const log = getImportLog();
+  const von = dates[0], bis = dates[dates.length-1];
+  log.unshift({bank, von, bis, imported: new Date().toISOString().slice(0,10), count: dates.length});
+  localStorage.setItem('belegscan_importlog', JSON.stringify(log.slice(0,50)));
+  loadImportLog();
+}
+function updateImportLog(bank, datum) {
+  // Just update display, full save on importAll
+}
+function loadImportLog() {
+  const log = getImportLog();
+  const sec = document.getElementById('import-log-section');
+  const list = document.getElementById('import-log-list');
+  if(!log.length) { sec.style.display='none'; return; }
+  sec.style.display='';
+  list.innerHTML = log.map(l=>`
+    <div class="hist-item">
+      <span style="font-size:11px;color:var(--text2);white-space:nowrap">${esc(l.bank)}</span>
+      <span style="font-size:12px;flex:1">${toDE(l.von)} – ${toDE(l.bis)}</span>
+      <span style="font-size:11px;color:var(--text3)">${l.count} Zeilen · importiert ${l.imported}</span>
+    </div>`).join('');
+}
 </script>
 </body>
 </html>
